@@ -1,655 +1,692 @@
 <!DOCTYPE html>
 <html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Трекер зарплаты менеджеров</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
 
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
-        }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+      }
 
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px 20px;
-            text-align: center;
-        }
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px 20px;
+        text-align: center;
+      }
 
+      .header h1 {
+        font-size: 28px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .month-nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 20px;
+      }
+
+      .month-nav button {
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: background 0.3s;
+      }
+
+      .month-nav button:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
+
+      .month-nav span {
+        font-size: 20px;
+        font-weight: bold;
+      }
+
+      .calendar-container {
+        padding: 10px;
+      }
+
+      .weekdays {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .weekday {
+        text-align: center;
+        font-weight: bold;
+        color: #667eea;
+        padding: 10px;
+        font-size: 14px;
+      }
+
+      .calendar {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 10px;
+      }
+
+      .day {
+        aspect-ratio: 1;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s;
+        position: relative;
+        background: white;
+      }
+
+      .day.clickable {
+        cursor: pointer;
+      }
+
+      .day.clickable:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      }
+
+      .day.empty {
+        border: none;
+        cursor: default;
+      }
+
+      .day.empty:hover {
+        transform: none;
+        box-shadow: none;
+      }
+
+      .day-number {
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 5px;
+      }
+
+      .manager-mark {
+        font-size: 24px;
+        font-weight: bold;
+      }
+
+      .mark-iman {
+        color: #4caf50;
+      }
+
+      .mark-seda {
+        color: #ff6b6b;
+      }
+
+      .legend {
+        display: flex;
+        justify-content: center;
+        gap: 30px;
+        padding: 20px;
+        border-top: 1px solid #e0e0e0;
+      }
+
+      .legend-item {
+        display: flex;
+        /* flex-direction: column; */
+        align-items: center;
+        gap: 10px;
+      }
+
+      .legend-top {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .legend-color {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 18px;
+      }
+
+      .legend-salary {
+        font-size: 18px;
+        font-weight: bold;
+        color: #667eea;
+        /* margin-top: 5px; */
+      }
+
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+      }
+
+      .modal.active {
+        display: flex;
+      }
+
+      .modal-content {
+        background: white;
+        padding: 30px;
+        border-radius: 20px;
+        max-width: 400px;
+        width: 90%;
+      }
+
+      .modal-content h2 {
+        margin-bottom: 20px;
+        color: #667eea;
+      }
+
+      .manager-select {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+      }
+
+      .manager-option {
+        padding: 15px;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.3s;
+        text-align: center;
+        font-size: 18px;
+        font-weight: bold;
+      }
+
+      .manager-option:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      }
+
+      .manager-option.iman {
+        border-color: #4caf50;
+        color: #4caf50;
+      }
+
+      .manager-option.iman:hover {
+        background: #4caf50;
+        color: white;
+      }
+
+      .manager-option.seda {
+        border-color: #ff6b6b;
+        color: #ff6b6b;
+      }
+
+      .manager-option.seda:hover {
+        background: #ff6b6b;
+        color: white;
+      }
+
+      .manager-option.remove {
+        border-color: #666;
+        color: #666;
+      }
+
+      .manager-option.remove:hover {
+        background: #666;
+        color: white;
+      }
+
+      .close-modal {
+        margin-top: 20px;
+        padding: 10px;
+        background: #e0e0e0;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        width: 100%;
+      }
+
+      .login-screen {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        z-index: 2000;
+      }
+
+      .login-box {
+        background: white;
+        padding: 40px;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        max-width: 400px;
+        width: 90%;
+      }
+
+      .login-box h2 {
+        color: #667eea;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+
+      .login-box input {
+        width: 100%;
+        padding: 15px;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        font-size: 16px;
+        margin-bottom: 20px;
+      }
+
+      .login-box button {
+        width: 100%;
+        padding: 15px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: transform 0.3s;
+      }
+
+      .login-box button:hover {
+        transform: translateY(-2px);
+      }
+
+      .error-message {
+        color: #ff6b6b;
+        text-align: center;
+        margin-top: 10px;
+        display: none;
+      }
+
+      .loading {
+        text-align: center;
+        padding: 20px;
+        color: #667eea;
+      }
+
+      @media (max-width: 600px) {
         .header h1 {
-            font-size: 28px;
-            margin-bottom: 10px;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .month-nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 20px;
-        }
-
-        .month-nav button {
-            background: rgba(255,255,255,0.2);
-            border: none;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background 0.3s;
-        }
-
-        .month-nav button:hover {
-            background: rgba(255,255,255,0.3);
+          font-size: 22px;
         }
 
         .month-nav span {
-            font-size: 20px;
-            font-weight: bold;
+          font-size: 18px;
         }
 
-        .calendar-container {
-            padding: 20px;
-        }
-
-        .weekdays {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .weekday {
-            text-align: center;
-            font-weight: bold;
-            color: #667eea;
-            padding: 10px;
-            font-size: 14px;
-        }
-
-        .calendar {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 10px;
-        }
-
-        .day {
-            aspect-ratio: 1;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s;
-            position: relative;
-            background: white;
-        }
-
-        .day.clickable {
-            cursor: pointer;
-        }
-
-        .day.clickable:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-
-        .day.empty {
-            border: none;
-            cursor: default;
-        }
-
-        .day.empty:hover {
-            transform: none;
-            box-shadow: none;
+        .month-nav button {
+          padding: 8px 15px;
+          font-size: 14px;
         }
 
         .day-number {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 5px;
+          font-size: 10px;
         }
 
         .manager-mark {
-            font-size: 24px;
-            font-weight: bold;
+          font-size: 12px;
         }
 
-        .mark-iman {
-            color: #4CAF50;
-        }
-
-        .mark-seda {
-            color: #FF6B6B;
+        .weekday {
+          font-size: 12px;
+          padding: 5px;
         }
 
         .legend {
-            display: flex;
-            justify-content: center;
-            gap: 30px;
-            padding: 20px;
-            border-top: 1px solid #e0e0e0;
+          flex-direction: column;
+          gap: 15px;
         }
-
-        .legend-item {
-            display: flex;
-            /* flex-direction: column; */
-            align-items: center;
-            gap: 10px;
-        }
-
-        .legend-top {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .legend-color {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 18px;
-        }
-
-        .legend-salary {
-            font-size: 18px;
-            font-weight: bold;
-            color: #667eea;
-            /* margin-top: 5px; */
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background: white;
-            padding: 30px;
-            border-radius: 20px;
-            max-width: 400px;
-            width: 90%;
-        }
-
-        .modal-content h2 {
-            margin-bottom: 20px;
-            color: #667eea;
-        }
-
-        .manager-select {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        .manager-option {
-            padding: 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-align: center;
-            font-size: 18px;
-            font-weight: bold;
-        }
-
-        .manager-option:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-
-        .manager-option.iman {
-            border-color: #4CAF50;
-            color: #4CAF50;
-        }
-
-        .manager-option.iman:hover {
-            background: #4CAF50;
-            color: white;
-        }
-
-        .manager-option.seda {
-            border-color: #FF6B6B;
-            color: #FF6B6B;
-        }
-
-        .manager-option.seda:hover {
-            background: #FF6B6B;
-            color: white;
-        }
-
-        .manager-option.remove {
-            border-color: #666;
-            color: #666;
-        }
-
-        .manager-option.remove:hover {
-            background: #666;
-            color: white;
-        }
-
-        .close-modal {
-            margin-top: 20px;
-            padding: 10px;
-            background: #e0e0e0;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            width: 100%;
-        }
-
-        .login-screen {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            z-index: 2000;
-        }
-
-        .login-box {
-            background: white;
-            padding: 40px;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 400px;
-            width: 90%;
-        }
-
-        .login-box h2 {
-            color: #667eea;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .login-box input {
-            width: 100%;
-            padding: 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            font-size: 16px;
-            margin-bottom: 20px;
-        }
-
-        .login-box button {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: transform 0.3s;
-        }
-
-        .login-box button:hover {
-            transform: translateY(-2px);
-        }
-
-        .error-message {
-            color: #FF6B6B;
-            text-align: center;
-            margin-top: 10px;
-            display: none;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #667eea;
-        }
-
-        @media (max-width: 600px) {
-            .header h1 {
-                font-size: 22px;
-            }
-
-            .month-nav span {
-                font-size: 18px;
-            }
-
-            .month-nav button {
-                padding: 8px 15px;
-                font-size: 14px;
-            }
-
-            .day-number {
-                font-size: 10px;
-            }
-
-            .manager-mark {
-                font-size: 20px;
-            }
-
-            .weekday {
-                font-size: 12px;
-                padding: 5px;
-            }
-
-            .legend {
-                flex-direction: column;
-                gap: 15px;
-            }
-        }
+      }
     </style>
-</head>
-<body>
-    <div class="login-screen" id="loginScreen" style="display: none;">
-        <div class="login-box">
-            <h2>Вход администратора</h2>
-            <input type="password" id="passwordInput" placeholder="Введите пароль">
-            <button onclick="checkPassword()">Войти</button>
-            <div class="error-message" id="errorMessage">Неверный пароль</div>
-        </div>
+  </head>
+  <body>
+    <div class="login-screen" id="loginScreen" style="display: none">
+      <div class="login-box">
+        <h2>Вход администратора</h2>
+        <input
+          type="password"
+          id="passwordInput"
+          placeholder="Введите пароль"
+        />
+        <button onclick="checkPassword()">Войти</button>
+        <div class="error-message" id="errorMessage">Неверный пароль</div>
+      </div>
     </div>
 
     <div class="container" id="mainContent">
-        <div class="header">
-            <h1 id="headerTitle">Трекер рабочих дней</h1>
-            <div class="month-nav">
-                <button onclick="changeMonth(-1)">← Пред</button>
-                <span id="currentMonth"></span>
-                <button onclick="changeMonth(1)">След →</button>
-            </div>
+      <div class="header">
+        <h1 id="headerTitle">Трекер рабочих дней</h1>
+        <div class="month-nav">
+          <button onclick="changeMonth(-1)">← Пред</button>
+          <span id="currentMonth"></span>
+          <button onclick="changeMonth(1)">След →</button>
         </div>
+      </div>
 
-        <div class="calendar-container">
-            <div class="loading" id="loading">Загрузка данных...</div>
-            <div id="calendarContent" style="display: none;">
-                <div class="weekdays">
-                    <div class="weekday">Пн</div>
-                    <div class="weekday">Вт</div>
-                    <div class="weekday">Ср</div>
-                    <div class="weekday">Чт</div>
-                    <div class="weekday">Пт</div>
-                    <div class="weekday">Сб</div>
-                    <div class="weekday">Вс</div>
-                </div>
-                <div class="calendar" id="calendar"></div>
-            </div>
+      <div class="calendar-container">
+        <div class="loading" id="loading">Загрузка данных...</div>
+        <div id="calendarContent" style="display: none">
+          <div class="weekdays">
+            <div class="weekday">Пн</div>
+            <div class="weekday">Вт</div>
+            <div class="weekday">Ср</div>
+            <div class="weekday">Чт</div>
+            <div class="weekday">Пт</div>
+            <div class="weekday">Сб</div>
+            <div class="weekday">Вс</div>
+          </div>
+          <div class="calendar" id="calendar"></div>
         </div>
+      </div>
 
-        <div class="legend">
-            <div class="legend-item">
-                <div class="legend-top">
-                    <div class="legend-color mark-iman">И</div>
-                    <span>Иман</span>
-                </div>
-                <div class="legend-salary" id="imanSalary">0 ₽</div>
-            </div>
-            <div class="legend-item">
-                <div class="legend-top">
-                    <div class="legend-color mark-seda">С</div>
-                    <span>Седа</span>
-                </div>
-                <div class="legend-salary" id="sedaSalary">0 ₽</div>
-            </div>
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-top">
+            <div class="legend-color mark-iman">И</div>
+            <span>Иман</span>
+          </div>
+          <div class="legend-salary" id="imanSalary">0 ₽</div>
         </div>
+        <div class="legend-item">
+          <div class="legend-top">
+            <div class="legend-color mark-seda">С</div>
+            <span>Седа</span>
+          </div>
+          <div class="legend-salary" id="sedaSalary">0 ₽</div>
+        </div>
+      </div>
     </div>
 
     <div class="modal" id="modal">
-        <div class="modal-content">
-            <h2>Выберите менеджера</h2>
-            <div class="manager-select">
-                <div class="manager-option iman" onclick="selectManager('iman')">Иман</div>
-                <div class="manager-option seda" onclick="selectManager('seda')">Седа</div>
-                <div class="manager-option remove" onclick="selectManager('none')">Удалить отметку</div>
-            </div>
-            <button class="close-modal" onclick="closeModal()">Отмена</button>
+      <div class="modal-content">
+        <h2>Выберите менеджера</h2>
+        <div class="manager-select">
+          <div class="manager-option iman" onclick="selectManager('iman')">
+            Иман
+          </div>
+          <div class="manager-option seda" onclick="selectManager('seda')">
+            Седа
+          </div>
+          <div class="manager-option remove" onclick="selectManager('none')">
+            Удалить отметку
+          </div>
         </div>
+        <button class="close-modal" onclick="closeModal()">Отмена</button>
+      </div>
     </div>
 
     <script>
-        const API_URL = 'https://84dde73bba978b5e.mokky.dev/workdays';
-        const DAILY_RATE = 800;
-        let currentDate = new Date();
-        let selectedDay = null;
-        let workdays = [];
-        let isAdmin = false;
-        let pressTimer = null;
+      const API_URL = "https://84dde73bba978b5e.mokky.dev/workdays";
+      const DAILY_RATE = 800;
+      let currentDate = new Date();
+      let selectedDay = null;
+      let workdays = [];
+      let isAdmin = false;
+      let pressTimer = null;
 
-        // Загрузка данных при открытии страницы
-        window.addEventListener('load', () => {
-            loadWorkdays();
+      // Загрузка данных при открытии страницы
+      window.addEventListener("load", () => {
+        loadWorkdays();
+      });
+
+      // Секретный вход для админа
+      const headerTitle = document.getElementById("headerTitle");
+
+      headerTitle.addEventListener("mousedown", () => {
+        pressTimer = setTimeout(() => {
+          showLoginModal();
+        }, 2000);
+      });
+
+      headerTitle.addEventListener("mouseup", () => {
+        clearTimeout(pressTimer);
+      });
+
+      headerTitle.addEventListener("mouseleave", () => {
+        clearTimeout(pressTimer);
+      });
+
+      headerTitle.addEventListener("touchstart", () => {
+        pressTimer = setTimeout(() => {
+          showLoginModal();
+        }, 2000);
+      });
+
+      headerTitle.addEventListener("touchend", () => {
+        clearTimeout(pressTimer);
+      });
+
+      headerTitle.addEventListener("touchcancel", () => {
+        clearTimeout(pressTimer);
+      });
+
+      function showLoginModal() {
+        document.getElementById("loginScreen").style.display = "flex";
+        document.getElementById("passwordInput").value = "";
+        document.getElementById("errorMessage").style.display = "none";
+      }
+
+      function checkPassword() {
+        const password = document.getElementById("passwordInput").value;
+        if (password === "энигма") {
+          isAdmin = true;
+          document.getElementById("loginScreen").style.display = "none";
+          renderCalendar();
+        } else {
+          document.getElementById("errorMessage").style.display = "block";
+        }
+      }
+
+      document
+        .getElementById("passwordInput")
+        .addEventListener("keypress", (e) => {
+          if (e.key === "Enter") checkPassword();
         });
 
-        // Секретный вход для админа
-        const headerTitle = document.getElementById('headerTitle');
-        
-        headerTitle.addEventListener('mousedown', () => {
-            pressTimer = setTimeout(() => {
-                showLoginModal();
-            }, 2000);
-        });
+      async function loadWorkdays() {
+        try {
+          const response = await fetch(API_URL);
+          workdays = await response.json();
+          document.getElementById("loading").style.display = "none";
+          document.getElementById("calendarContent").style.display = "block";
+          renderCalendar();
+        } catch (error) {
+          console.error("Ошибка загрузки данных:", error);
+          document.getElementById("loading").textContent =
+            "Ошибка загрузки. Попробуйте обновить страницу.";
+        }
+      }
 
-        headerTitle.addEventListener('mouseup', () => {
-            clearTimeout(pressTimer);
-        });
+      function calculateSalary(manager) {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
 
-        headerTitle.addEventListener('mouseleave', () => {
-            clearTimeout(pressTimer);
-        });
+        const count = workdays.filter((w) => {
+          const date = new Date(w.date);
+          return (
+            w.manager === manager &&
+            date.getFullYear() === year &&
+            date.getMonth() === month
+          );
+        }).length;
 
-        headerTitle.addEventListener('touchstart', () => {
-            pressTimer = setTimeout(() => {
-                showLoginModal();
-            }, 2000);
-        });
+        return count * DAILY_RATE;
+      }
 
-        headerTitle.addEventListener('touchend', () => {
-            clearTimeout(pressTimer);
-        });
+      function updateSalaries() {
+        document.getElementById("imanSalary").textContent = `${calculateSalary(
+          "iman"
+        ).toLocaleString("ru-RU")} ₽`;
+        document.getElementById("sedaSalary").textContent = `${calculateSalary(
+          "seda"
+        ).toLocaleString("ru-RU")} ₽`;
+      }
 
-        headerTitle.addEventListener('touchcancel', () => {
-            clearTimeout(pressTimer);
-        });
+      function renderCalendar() {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
 
-        function showLoginModal() {
-            document.getElementById('loginScreen').style.display = 'flex';
-            document.getElementById('passwordInput').value = '';
-            document.getElementById('errorMessage').style.display = 'none';
+        const monthNames = [
+          "Январь",
+          "Февраль",
+          "Март",
+          "Апрель",
+          "Май",
+          "Июнь",
+          "Июль",
+          "Август",
+          "Сентябрь",
+          "Октябрь",
+          "Ноябрь",
+          "Декабрь",
+        ];
+
+        document.getElementById(
+          "currentMonth"
+        ).textContent = `${monthNames[month]} ${year}`;
+
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const startingDayOfWeek =
+          firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+        const daysInMonth = lastDay.getDate();
+
+        const calendar = document.getElementById("calendar");
+        calendar.innerHTML = "";
+
+        for (let i = 0; i < startingDayOfWeek; i++) {
+          const emptyDay = document.createElement("div");
+          emptyDay.className = "day empty";
+          calendar.appendChild(emptyDay);
         }
 
-        function checkPassword() {
-            const password = document.getElementById('passwordInput').value;
-            if (password === 'энигма') {
-                isAdmin = true;
-                document.getElementById('loginScreen').style.display = 'none';
-                renderCalendar();
+        for (let day = 1; day <= daysInMonth; day++) {
+          const dayElement = document.createElement("div");
+          dayElement.className = "day";
+
+          const dayNumber = document.createElement("div");
+          dayNumber.className = "day-number";
+          dayNumber.textContent = day;
+          dayElement.appendChild(dayNumber);
+
+          const dateString = `${year}-${String(month + 1).padStart(
+            2,
+            "0"
+          )}-${String(day).padStart(2, "0")}`;
+          const workday = workdays.find((w) => w.date === dateString);
+
+          if (workday) {
+            const mark = document.createElement("div");
+            mark.className = `manager-mark mark-${workday.manager}`;
+            mark.textContent = workday.manager === "iman" ? "И" : "С";
+            dayElement.appendChild(mark);
+          }
+
+          if (isAdmin) {
+            dayElement.classList.add("clickable");
+            dayElement.onclick = () => openModal(day, dateString, workday);
+          }
+
+          calendar.appendChild(dayElement);
+        }
+
+        updateSalaries();
+      }
+
+      function openModal(day, dateString, existingWorkday) {
+        if (!isAdmin) return;
+        selectedDay = { day, dateString, workday: existingWorkday };
+        document.getElementById("modal").classList.add("active");
+      }
+
+      function closeModal() {
+        document.getElementById("modal").classList.remove("active");
+        selectedDay = null;
+      }
+
+      async function selectManager(manager) {
+        if (!selectedDay || !isAdmin) return;
+
+        try {
+          if (manager === "none") {
+            if (selectedDay.workday) {
+              await fetch(`${API_URL}/${selectedDay.workday.id}`, {
+                method: "DELETE",
+              });
+              workdays = workdays.filter(
+                (w) => w.id !== selectedDay.workday.id
+              );
+            }
+          } else {
+            if (selectedDay.workday) {
+              await fetch(`${API_URL}/${selectedDay.workday.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ manager }),
+              });
+              selectedDay.workday.manager = manager;
             } else {
-                document.getElementById('errorMessage').style.display = 'block';
+              const response = await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  date: selectedDay.dateString,
+                  manager: manager,
+                }),
+              });
+              const newWorkday = await response.json();
+              workdays.push(newWorkday);
             }
+          }
+
+          closeModal();
+          renderCalendar();
+        } catch (error) {
+          console.error("Ошибка сохранения:", error);
+          alert("Ошибка при сохранении данных");
         }
+      }
 
-        document.getElementById('passwordInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') checkPassword();
-        });
-
-        async function loadWorkdays() {
-            try {
-                const response = await fetch(API_URL);
-                workdays = await response.json();
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('calendarContent').style.display = 'block';
-                renderCalendar();
-            } catch (error) {
-                console.error('Ошибка загрузки данных:', error);
-                document.getElementById('loading').textContent = 'Ошибка загрузки. Попробуйте обновить страницу.';
-            }
-        }
-
-        function calculateSalary(manager) {
-            const year = currentDate.getFullYear();
-            const month = currentDate.getMonth();
-            
-            const count = workdays.filter(w => {
-                const date = new Date(w.date);
-                return w.manager === manager && 
-                       date.getFullYear() === year && 
-                       date.getMonth() === month;
-            }).length;
-            
-            return count * DAILY_RATE;
-        }
-
-        function updateSalaries() {
-            document.getElementById('imanSalary').textContent = 
-                `${calculateSalary('iman').toLocaleString('ru-RU')} ₽`;
-            document.getElementById('sedaSalary').textContent = 
-                `${calculateSalary('seda').toLocaleString('ru-RU')} ₽`;
-        }
-
-        function renderCalendar() {
-            const year = currentDate.getFullYear();
-            const month = currentDate.getMonth();
-            
-            const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 
-                               'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-            
-            document.getElementById('currentMonth').textContent = `${monthNames[month]} ${year}`;
-
-            const firstDay = new Date(year, month, 1);
-            const lastDay = new Date(year, month + 1, 0);
-            const startingDayOfWeek = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
-            const daysInMonth = lastDay.getDate();
-
-            const calendar = document.getElementById('calendar');
-            calendar.innerHTML = '';
-
-            for (let i = 0; i < startingDayOfWeek; i++) {
-                const emptyDay = document.createElement('div');
-                emptyDay.className = 'day empty';
-                calendar.appendChild(emptyDay);
-            }
-
-            for (let day = 1; day <= daysInMonth; day++) {
-                const dayElement = document.createElement('div');
-                dayElement.className = 'day';
-                
-                const dayNumber = document.createElement('div');
-                dayNumber.className = 'day-number';
-                dayNumber.textContent = day;
-                dayElement.appendChild(dayNumber);
-
-                const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const workday = workdays.find(w => w.date === dateString);
-
-                if (workday) {
-                    const mark = document.createElement('div');
-                    mark.className = `manager-mark mark-${workday.manager}`;
-                    mark.textContent = workday.manager === 'iman' ? 'И' : 'С';
-                    dayElement.appendChild(mark);
-                }
-
-                if (isAdmin) {
-                    dayElement.classList.add('clickable');
-                    dayElement.onclick = () => openModal(day, dateString, workday);
-                }
-
-                calendar.appendChild(dayElement);
-            }
-
-            updateSalaries();
-        }
-
-        function openModal(day, dateString, existingWorkday) {
-            if (!isAdmin) return;
-            selectedDay = { day, dateString, workday: existingWorkday };
-            document.getElementById('modal').classList.add('active');
-        }
-
-        function closeModal() {
-            document.getElementById('modal').classList.remove('active');
-            selectedDay = null;
-        }
-
-        async function selectManager(manager) {
-            if (!selectedDay || !isAdmin) return;
-
-            try {
-                if (manager === 'none') {
-                    if (selectedDay.workday) {
-                        await fetch(`${API_URL}/${selectedDay.workday.id}`, {
-                            method: 'DELETE'
-                        });
-                        workdays = workdays.filter(w => w.id !== selectedDay.workday.id);
-                    }
-                } else {
-                    if (selectedDay.workday) {
-                        await fetch(`${API_URL}/${selectedDay.workday.id}`, {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ manager })
-                        });
-                        selectedDay.workday.manager = manager;
-                    } else {
-                        const response = await fetch(API_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                date: selectedDay.dateString,
-                                manager: manager
-                            })
-                        });
-                        const newWorkday = await response.json();
-                        workdays.push(newWorkday);
-                    }
-                }
-
-                closeModal();
-                renderCalendar();
-            } catch (error) {
-                console.error('Ошибка сохранения:', error);
-                alert('Ошибка при сохранении данных');
-            }
-        }
-
-        function changeMonth(delta) {
-            currentDate.setMonth(currentDate.getMonth() + delta);
-            renderCalendar();
-        }
+      function changeMonth(delta) {
+        currentDate.setMonth(currentDate.getMonth() + delta);
+        renderCalendar();
+      }
     </script>
-</body>
+  </body>
 </html>
