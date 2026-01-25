@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
@@ -184,6 +184,13 @@
         /* flex-direction: column; */
         align-items: center;
         gap: 10px;
+        justify-content: space-between;
+        border-bottom: 2px solid #e0e0e0;
+      }
+
+      #paidCheckbox{
+        width: 20px;
+        height: 20px;
       }
 
       .legend-top {
@@ -204,7 +211,7 @@
       }
 
       .legend-salary {
-        font-size: 18px;
+        font-size: 10px;
         font-weight: bold;
         color: #667eea;
         /* margin-top: 5px; */
@@ -367,6 +374,23 @@
         padding: 20px;
         color: #667eea;
       }
+       .day.paid {
+          background-color: rgba(76, 175, 80, 0.1);
+          border-color: #4caf50;
+        }
+
+        .day.paid .manager-mark {
+          opacity: 0.7;
+        }
+
+        .legend-salary .paid-amount {
+          font-size: 10px;
+          color: #4caf50;
+        }
+        .remaining-amount{
+          color: red;
+          font-weight: 500;
+        }
 
       @media (max-width: 600px) {
         .header h1 {
@@ -407,6 +431,19 @@
         .legend {
           flex-direction: column;
           gap: 15px;
+        }
+        .day.paid {
+          background-color: rgba(76, 175, 80, 0.1);
+          border-color: #4caf50;
+        }
+
+        .day.paid .manager-mark {
+          opacity: 0.7;
+        }
+
+        .legend-salary .paid-amount {
+          font-size: 10px;
+          color: #4caf50;
         }
       }
     </style>
@@ -485,6 +522,13 @@
           <div class="manager-option remove" onclick="selectManager('none')">
             Удалить отметку
           </div>
+          <div class="paid-section" style="margin-top: 20px">
+            <label style="display: block; margin-bottom: 10px">
+              <input type="checkbox" id="paidCheckbox" /> Отметить как
+              выплаченный день
+            </label>
+          </div>
+          
         </div>
         <button class="close-modal" onclick="closeModal()">Отмена</button>
       </div>
@@ -576,25 +620,35 @@
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
 
-        const count = workdays.filter((w) => {
+        const totalDays = workdays.filter((w) => {
           const date = new Date(w.date);
           return (
             w.manager === manager &&
             date.getFullYear() === year &&
             date.getMonth() === month
           );
-        }).length;
+        });
 
-        return count * DAILY_RATE;
+        const paidDays = totalDays.filter((w) => w.paid).length;
+        const total = totalDays.length * DAILY_RATE;
+        const paid = paidDays * DAILY_RATE;
+
+        return { total, paid };
       }
 
       function updateSalaries() {
-        document.getElementById("imanSalary").textContent = `${calculateSalary(
-          "iman"
-        ).toLocaleString("ru-RU")} ₽`;
-        document.getElementById("sedaSalary").textContent = `${calculateSalary(
-          "seda"
-        ).toLocaleString("ru-RU")} ₽`;
+        const iman = calculateSalary("iman");
+        const seda = calculateSalary("seda");
+        document.getElementById("imanSalary").innerHTML = `
+    ${iman.total.toLocaleString("ru-RU")} ₽
+    <div class="paid-amount">Выплачено: ${iman.paid.toLocaleString("ru-RU")} ₽</div>
+    <div class="remaining-amount">Осталось: ${(iman.total - iman.paid).toLocaleString("ru-RU")} ₽</div>
+  `;
+        document.getElementById("sedaSalary").innerHTML = `
+    ${seda.total.toLocaleString("ru-RU")} ₽
+    <div class="paid-amount">Выплачено: ${seda.paid.toLocaleString("ru-RU")} ₽</div>
+    <div class="remaining-amount">Осталось: ${(seda.total - seda.paid).toLocaleString("ru-RU")} ₽</div>
+  `;
       }
 
       function renderCalendar() {
@@ -616,9 +670,8 @@
           "Декабрь",
         ];
 
-        document.getElementById(
-          "currentMonth"
-        ).textContent = `${monthNames[month]} ${year}`;
+        document.getElementById("currentMonth").textContent =
+          `${monthNames[month]} ${year}`;
 
         const firstDay = new Date(year, month, 1);
         const lastDay = new Date(year, month + 1, 0);
@@ -646,11 +699,14 @@
 
           const dateString = `${year}-${String(month + 1).padStart(
             2,
-            "0"
+            "0",
           )}-${String(day).padStart(2, "0")}`;
           const workday = workdays.find((w) => w.date === dateString);
 
           if (workday) {
+            if (workday.paid) {
+              dayElement.classList.add("paid");
+            }
             const mark = document.createElement("div");
             mark.className = `manager-mark mark-${workday.manager}`;
             mark.textContent = workday.manager === "iman" ? "И" : "С";
@@ -671,9 +727,33 @@
       function openModal(day, dateString, existingWorkday) {
         if (!isAdmin) return;
         selectedDay = { day, dateString, workday: existingWorkday };
-        document.getElementById("modal").classList.add("active");
-      }
 
+        // Создаем или обновляем модальное окно с чекбоксом
+        const modal = document.getElementById("modal");
+        const modalContent = modal.querySelector(".modal-content");
+
+        // Добавляем чекбокс если его нет
+        if (!modal.querySelector("#paidCheckbox")) {
+          const paidSection = document.createElement("div");
+          paidSection.className = "paid-section";
+          paidSection.style.marginTop = "20px";
+          paidSection.innerHTML = `
+      <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+        <input type="checkbox" id="paidCheckbox">
+        <span>Отметить как выплаченный день</span>
+      </label>
+    `;
+          modal.querySelector(".manager-select").appendChild(paidSection);
+        }
+
+        // Устанавливаем состояние чекбокса
+        const checkbox = document.getElementById("paidCheckbox");
+        if (checkbox) {
+          checkbox.checked = existingWorkday?.paid || false;
+        }
+
+        modal.classList.add("active");
+      }
       function closeModal() {
         document.getElementById("modal").classList.remove("active");
         selectedDay = null;
@@ -683,30 +763,41 @@
         if (!selectedDay || !isAdmin) return;
 
         try {
+          const isPaid =
+            document.getElementById("paidCheckbox")?.checked || false;
+
           if (manager === "none") {
             if (selectedDay.workday) {
               await fetch(`${API_URL}/${selectedDay.workday.id}`, {
                 method: "DELETE",
               });
               workdays = workdays.filter(
-                (w) => w.id !== selectedDay.workday.id
+                (w) => w.id !== selectedDay.workday.id,
               );
             }
           } else {
             if (selectedDay.workday) {
+              // Обновляем существующую запись
               await fetch(`${API_URL}/${selectedDay.workday.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ manager }),
+                body: JSON.stringify({
+                  manager: manager,
+                  paid: isPaid,
+                }),
               });
+              // Обновляем локальные данные
               selectedDay.workday.manager = manager;
+              selectedDay.workday.paid = isPaid;
             } else {
+              // Создаем новую запись
               const response = await fetch(API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   date: selectedDay.dateString,
                   manager: manager,
+                  paid: isPaid,
                 }),
               });
               const newWorkday = await response.json();
@@ -721,7 +812,6 @@
           alert("Ошибка при сохранении данных");
         }
       }
-
       function changeMonth(delta) {
         currentDate.setMonth(currentDate.getMonth() + delta);
         renderCalendar();
