@@ -122,6 +122,10 @@ body {
 .tot__line { font-size: 13px; margin-top: 3px; }
 .tot__line--paid { color: var(--ok); }
 .tot__line--left { color: var(--muted); }
+.tot__line--month { color: var(--muted); opacity: 0.75; margin-top: 6px; }
+.tot__days { background: #fdeaea; color: #a83232; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+.tot--clear .tot__sum { color: var(--ok); }
+.tot--clear .tot__days { background: #e2f7ee; color: #0f7a53; }
 
 /* ---------- Статус ---------- */
 .status {

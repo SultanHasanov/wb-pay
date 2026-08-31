@@ -33,7 +33,11 @@
       managers: data.managers,
       clickable: false,
     });
-    Cal.renderTotals(el("totals"), Cal.totals(data.workdays, data.managers, year, month));
+    Cal.renderTotals(
+      el("totals"),
+      Cal.totals(data.workdays, data.managers, year, month),
+      U.MONTHS[month - 1]
+    );
     drawToday();
   }
 

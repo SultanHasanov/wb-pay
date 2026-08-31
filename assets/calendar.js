@@ -72,42 +72,65 @@ window.Cal = (() => {
     }
   }
 
-  /* Итоги за месяц по каждому менеджеру. */
+  /* Итоги по каждому менеджеру.
+
+     Главное в карточке — долг за ВЕСЬ неоплаченный период, а не за
+     выбранный месяц: неоплаченные дни с прошлых месяцев тоже входят в сумму,
+     и цифра не меняется при перелистывании календаря. Отметили выплату —
+     дни и деньги уходят из долга.
+
+     Отдельно считаем месяц, который сейчас открыт, — для справки. */
   function totals(workdays, managers, year, month) {
     const prefix = `${year}-${String(month).padStart(2, "0")}`;
     return managers.map((m) => {
-      const rows = workdays.filter(
-        (w) => w.managerId === m.id && String(w.date).startsWith(prefix)
-      );
-      const accrued = rows.reduce((s, w) => s + rateOf(w, m), 0);
-      const paid = rows.filter((w) => w.paid).reduce((s, w) => s + rateOf(w, m), 0);
+      const mine = workdays.filter((w) => w.managerId === m.id);
+      const unpaid = mine.filter((w) => !w.paid);
+      const dates = unpaid.map((w) => w.date).sort();
+      const inMonth = mine.filter((w) => String(w.date).startsWith(prefix));
+
       return {
         manager: m,
-        days: rows.length,
-        paidDays: rows.filter((w) => w.paid).length,
-        accrued,
-        paid,
-        left: accrued - paid,
+        // весь неоплаченный период
+        unpaidDays: unpaid.length,
+        unpaidSum: unpaid.reduce((s, w) => s + rateOf(w, m), 0),
+        from: dates[0] || null,
+        to: dates[dates.length - 1] || null,
+        // открытый месяц
+        monthDays: inMonth.length,
+        monthSum: inMonth.reduce((s, w) => s + rateOf(w, m), 0),
+        monthUnpaid: inMonth.filter((w) => !w.paid),
+        // за всё время
+        allDays: mine.length,
+        allSum: mine.reduce((s, w) => s + rateOf(w, m), 0),
       };
     });
   }
 
-  function renderTotals(el, list) {
+  /* Период, за который накопился долг. */
+  function unpaidPeriod(t) {
+    if (!t.unpaidDays) return "всё выплачено";
+    if (t.from === t.to) return `за ${U.fmtShort(t.from)}`;
+    return `с ${U.fmtShort(t.from)} по ${U.fmtShort(t.to)}`;
+  }
+
+  function renderTotals(el, list, monthName) {
     el.innerHTML = "";
     for (const t of list) {
       const card = document.createElement("div");
-      card.className = "tot";
+      card.className = "tot" + (t.unpaidDays ? "" : " tot--clear");
       card.innerHTML = `
         <div class="tot__head">
           <span class="chip chip--lg" style="background:${U.esc(t.manager.color || "#888")}">
             ${U.esc(t.manager.letter || "?")}
           </span>
           <span class="tot__name">${U.esc(t.manager.name)}</span>
-          <span class="tot__days">${t.days} дн.</span>
+          <span class="tot__days">${t.unpaidDays} дн.</span>
         </div>
-        <div class="tot__sum">${U.money(t.accrued)}</div>
-        <div class="tot__line tot__line--paid">Выплачено: ${U.money(t.paid)}</div>
-        <div class="tot__line tot__line--left">Осталось: ${U.money(t.left)}</div>`;
+        <div class="tot__sum">${U.money(t.unpaidSum)}</div>
+        <div class="tot__line tot__line--left">К выплате · ${U.esc(unpaidPeriod(t))}</div>
+        <div class="tot__line tot__line--month">
+          ${monthName ? `За ${U.esc(monthName.toLowerCase())}: ` : "За месяц: "}${t.monthDays} дн. · ${U.money(t.monthSum)}
+        </div>`;
       el.appendChild(card);
     }
     if (!list.length) {
@@ -119,5 +142,5 @@ window.Cal = (() => {
     el.innerHTML = WEEKDAYS.map((w) => `<span>${w}</span>`).join("");
   }
 
-  return { render, totals, renderTotals, renderWeekdays, rateOf, WEEKDAYS };
+  return { render, totals, renderTotals, renderWeekdays, unpaidPeriod, rateOf, WEEKDAYS };
 })();

@@ -90,7 +90,11 @@
       clickable: true,
       onDayClick: openDay,
     });
-    Cal.renderTotals(el("totals"), Cal.totals(S.workdays, S.managers, S.year, S.month));
+    Cal.renderTotals(
+      el("totals"),
+      Cal.totals(S.workdays, S.managers, S.year, S.month),
+      U.MONTHS[S.month - 1]
+    );
   }
 
   function openDay(date) {
@@ -239,34 +243,57 @@
 
   /* ================= выплаты ================= */
   function drawPay() {
+    const monthName = U.MONTHS[S.month - 1];
     const list = Cal.totals(S.workdays, S.managers, S.year, S.month);
+
     el("payList").innerHTML = list.map((t) => `
-      <div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);flex-wrap:wrap">
-        <span class="chip" style="background:${U.esc(t.manager.color || "#888")}">${U.esc(t.manager.letter || "?")}</span>
-        <span style="font-weight:600">${U.esc(t.manager.name)}</span>
-        <span class="muted">${t.days} дн. · начислено ${U.money(t.accrued)}</span>
-        <span style="margin-left:auto;text-align:right">
-          <div style="color:var(--ok);font-size:13px">выплачено ${U.money(t.paid)}</div>
-          <div style="font-weight:650">осталось ${U.money(t.left)}</div>
-        </span>
-        <button class="btn btn--ok btn--sm" data-paymonth="${t.manager.id}" ${t.days === t.paidDays ? "disabled" : ""}>
-          Отметить месяц
-        </button>
+      <div style="padding:13px 0;border-bottom:1px solid var(--line)">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="chip" style="background:${U.esc(t.manager.color || "#888")}">${U.esc(t.manager.letter || "?")}</span>
+          <span style="font-weight:600">${U.esc(t.manager.name)}</span>
+          <span style="margin-left:auto;font-weight:700;font-size:17px;${t.unpaidDays ? "" : "color:var(--ok)"}">
+            ${U.money(t.unpaidSum)}
+          </span>
+        </div>
+        <div class="muted" style="margin-top:5px">
+          К выплате: ${t.unpaidDays} дн. · ${U.esc(Cal.unpaidPeriod(t))}
+        </div>
+        <div class="muted" style="opacity:.75">
+          За ${U.esc(monthName.toLowerCase())}: ${t.monthDays} дн. · ${U.money(t.monthSum)}
+        </div>
+        <div class="btn-row" style="margin-top:9px">
+          <button class="btn btn--ok btn--sm" data-payall="${t.manager.id}" ${t.unpaidDays ? "" : "disabled"}>
+            Выплатить всё
+          </button>
+          <button class="btn btn--line btn--sm" data-paymonth="${t.manager.id}" ${t.monthUnpaid.length ? "" : "disabled"}>
+            Только ${U.esc(monthName.toLowerCase())} (${t.monthUnpaid.length} дн.)
+          </button>
+        </div>
       </div>`).join("") || `<div class="muted">Нет данных.</div>`;
 
-    all("#payList [data-paymonth]").forEach((b) => {
-      b.addEventListener("click", async () => {
+    const payRows = async (rows, what) => {
+      if (!rows.length) return;
+      if (!confirm(`Отметить оплаченными ${rows.length} дн. ${what}?`)) return;
+      // Последовательно: mokky теряет часть параллельных записей.
+      for (const w of rows) await DB.update("workdays", w.id, { paid: true });
+      await refresh();
+    };
+
+    all("#payList [data-payall]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const id = Number(b.dataset.payall);
+        payRows(S.workdays.filter((w) => w.managerId === id && !w.paid), "за весь период");
+      }));
+
+    all("#payList [data-paymonth]").forEach((b) =>
+      b.addEventListener("click", () => {
         const id = Number(b.dataset.paymonth);
         const prefix = `${S.year}-${String(S.month).padStart(2, "0")}`;
-        const rows = S.workdays.filter(
-          (w) => w.managerId === id && String(w.date).startsWith(prefix) && !w.paid
+        payRows(
+          S.workdays.filter((w) => w.managerId === id && !w.paid && String(w.date).startsWith(prefix)),
+          `за ${monthName.toLowerCase()}`
         );
-        if (!rows.length) return;
-        if (!confirm(`Отметить оплаченными ${rows.length} дн. за ${U.MONTHS[S.month - 1]}?`)) return;
-        for (const w of rows) await DB.update("workdays", w.id, { paid: true });
-        await refresh();
-      });
-    });
+      }));
 
     const sel = el("payWho");
     const keep = sel.value;
