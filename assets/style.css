@@ -1,0 +1,212 @@
+:root {
+  --bg: #eef0f6;
+  --card: #ffffff;
+  --ink: #1c1f2b;
+  --muted: #6d7385;
+  --line: #e2e5ee;
+  --brand: #5b4bd6;
+  --brand-2: #7c5ce0;
+  --ok: #17a673;
+  --warn: #d98218;
+  --err: #d64545;
+  --radius: 16px;
+  --shadow: 0 6px 24px rgba(28, 31, 43, 0.09);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.app { max-width: 760px; margin: 0 auto; padding: 14px 14px 48px; }
+
+/* ---------- Шапка ---------- */
+.hdr {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+  margin-bottom: 14px;
+}
+.hdr__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hdr h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.2px; }
+.hdr__sub { margin-top: 8px; font-size: 13px; opacity: 0.9; }
+
+/* ---------- Карточки ---------- */
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.card__title { margin: 0 0 12px; font-size: 15px; font-weight: 650; }
+
+/* ---------- Кнопки ---------- */
+.btn {
+  appearance: none;
+  border: 0;
+  border-radius: 11px;
+  padding: 10px 15px;
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+  background: var(--brand);
+  color: #fff;
+  transition: filter 0.15s, opacity 0.15s;
+}
+.btn:hover { filter: brightness(1.07); }
+.btn:disabled { opacity: 0.5; cursor: default; filter: none; }
+.btn--ghost { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.btn--soft { background: #eeecfb; color: var(--brand); }
+.btn--line { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.btn--danger { background: var(--err); }
+.btn--ok { background: var(--ok); }
+.btn--sm { padding: 7px 11px; font-size: 13px; border-radius: 9px; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------- Календарь ---------- */
+.monthbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 12px;
+}
+.monthbar__label { font-weight: 650; font-size: 16px; }
+
+.weekdays, .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.weekdays {
+  margin-bottom: 6px; font-size: 11px; color: var(--muted);
+  text-align: center; text-transform: uppercase; letter-spacing: 0.4px;
+}
+
+.cell {
+  position: relative;
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fbfbfe;
+  padding: 4px;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  gap: 3px;
+  font: inherit; color: inherit;
+  cursor: default;
+}
+.cell:not(:disabled) { cursor: pointer; }
+.cell:not(:disabled):hover { border-color: var(--brand); background: #f5f3ff; }
+.cell--empty { border: 0; background: none; }
+.cell--today { border-color: var(--brand); border-width: 2px; }
+.cell--paid { background: #eafaf3; }
+.cell__num { font-size: 12px; color: var(--muted); line-height: 1; }
+.cell__marks { display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; }
+
+.chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  color: #fff; font-size: 12px; font-weight: 700; line-height: 1;
+}
+.chip--paid { box-shadow: 0 0 0 2px var(--ok); }
+.chip--lg { width: 30px; height: 30px; font-size: 14px; }
+
+/* ---------- Итоги ---------- */
+.totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.tot { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; }
+.tot__head { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+.tot__name { font-weight: 650; }
+.tot__days { margin-left: auto; font-size: 12px; color: var(--muted); }
+.tot__sum { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; }
+.tot__line { font-size: 13px; margin-top: 3px; }
+.tot__line--paid { color: var(--ok); }
+.tot__line--left { color: var(--muted); }
+
+/* ---------- Статус ---------- */
+.status {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; padding: 10px 12px; border-radius: 11px;
+  background: #f4f4fb; color: var(--muted); margin-bottom: 14px;
+}
+.status__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.status--ok .status__dot { background: var(--ok); }
+.status--warn .status__dot { background: var(--warn); }
+.status--err .status__dot { background: var(--err); }
+
+.banner {
+  border-radius: var(--radius); padding: 13px 15px; margin-bottom: 14px;
+  font-size: 14px; background: #fff5e5; color: #7a4a05; border: 1px solid #f2d9ae;
+}
+.banner code { background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 4px; }
+
+/* ---------- Вкладки ---------- */
+.tabs { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; padding-bottom: 2px; }
+.tab {
+  flex: none; border: 0; background: #fff; color: var(--muted);
+  padding: 9px 14px; border-radius: 11px; font: inherit; font-weight: 550;
+  cursor: pointer; box-shadow: var(--shadow); white-space: nowrap;
+}
+.tab--on { background: var(--brand); color: #fff; }
+
+/* ---------- Формы ---------- */
+.field { margin-bottom: 12px; }
+.field > label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; }
+input[type="text"], input[type="time"], input[type="number"],
+input[type="password"], input[type="date"], select, textarea {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 11px; font: inherit; background: #fbfbfe; color: var(--ink);
+}
+input[type="color"] { width: 44px; height: 38px; padding: 2px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; }
+.check { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 10px; }
+.check input { width: 18px; height: 18px; margin: 1px 0 0; flex: none; }
+.check label { font-size: 14px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ---------- Таблицы ---------- */
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { color: var(--muted); font-weight: 550; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; }
+tr:last-child td { border-bottom: 0; }
+
+.pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 550; }
+.pill--ok { background: #e2f7ee; color: #0f7a53; }
+.pill--no { background: #fdeaea; color: #a83232; }
+.pill--wait { background: #fff2df; color: #8a5504; }
+.pill--mut { background: #eef0f6; color: var(--muted); }
+
+.muted { color: var(--muted); font-size: 13px; }
+.right { text-align: right; }
+.nowrap { white-space: nowrap; }
+
+/* ---------- Модалка ---------- */
+.modal {
+  position: fixed; inset: 0; background: rgba(20, 22, 32, 0.55);
+  display: none; align-items: flex-end; justify-content: center;
+  padding: 0; z-index: 50;
+}
+.modal[open], .modal.on { display: flex; }
+.modal__box {
+  background: var(--card); width: 100%; max-width: 460px;
+  border-radius: 20px 20px 0 0; padding: 18px; max-height: 90vh; overflow-y: auto;
+}
+.modal__title { margin: 0 0 4px; font-size: 17px; font-weight: 650; }
+.modal__sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+
+/* ---------- Вход ---------- */
+.gate { max-width: 340px; margin: 14vh auto 0; padding: 0 14px; }
+.gate .card { text-align: center; }
+.gate h2 { margin: 0 0 14px; font-size: 18px; }
+.err { color: var(--err); font-size: 13px; margin-top: 9px; min-height: 18px; }
+
+@media (min-width: 560px) {
+  .modal { align-items: center; padding: 20px; }
+  .modal__box { border-radius: 20px; }
+}
+@media (max-width: 400px) {
+  .chip { width: 21px; height: 21px; font-size: 11px; }
+  .app { padding: 10px 10px 40px; }
+  .grid2 { grid-template-columns: 1fr; }
+}

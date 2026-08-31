@@ -1,0 +1,44 @@
+{
+  "managers": [
+    {
+      "id": 1,
+      "name": "Хеда",
+      "letter": "Х",
+      "color": "#6c5ce7",
+      "phone": "",
+      "rate": 800,
+      "active": true,
+      "sort": 1
+    },
+    {
+      "id": 2,
+      "name": "Камила",
+      "letter": "К",
+      "color": "#00b894",
+      "phone": "",
+      "rate": 800,
+      "active": true,
+      "sort": 2
+    }
+  ],
+  "workdays": [],
+  "polls": [],
+  "votelog": [],
+  "settings": [
+    {
+      "id": 1,
+      "enabled": true,
+      "pollTime": "09:00",
+      "tz": "Europe/Moscow",
+      "groupId": "",
+      "skipWeekends": false,
+      "question": "Кто сегодня на смене?",
+      "confirmMode": "confirm",
+      "holdMinutes": 10,
+      "cleanup": "keep_result",
+      "cleanupDelaySec": 10,
+      "allowExtraPhones": [],
+      "adminPin": "1234"
+    }
+  ]
+}

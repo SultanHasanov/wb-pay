@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Админка · Смены</title>
+    <link rel="stylesheet" href="assets/style.css" />
+  </head>
+  <body>
+    <!-- Вход -->
+    <div class="gate" id="gate" hidden>
+      <div class="card">
+        <h2>Вход в админку</h2>
+        <input type="password" id="pin" placeholder="PIN" inputmode="numeric" autocomplete="off" />
+        <div class="err" id="pinErr"></div>
+        <button class="btn" id="pinBtn" style="width: 100%">Войти</button>
+        <div class="muted" style="margin-top: 12px">
+          <a href="index.html">← к календарю</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="app" id="app" hidden>
+      <header class="hdr">
+        <div class="hdr__row">
+          <h1>Админка</h1>
+          <a class="btn btn--ghost btn--sm" href="index.html">Календарь</a>
+        </div>
+        <div class="hdr__sub" id="adminToday"></div>
+      </header>
+
+      <div id="setupBanner" hidden class="banner">
+        <b>Не заполнены ключи.</b> Откройте <code>assets/config.js</code> и укажите
+        <code>MOKKY_URL</code>, <code>GREEN_ID</code> и <code>GREEN_TOKEN</code>.
+      </div>
+
+      <div class="tabs" id="tabs">
+        <button class="tab tab--on" data-tab="calendar">Календарь</button>
+        <button class="tab" data-tab="managers">Менеджеры</button>
+        <button class="tab" data-tab="pay">Выплаты</button>
+        <button class="tab" data-tab="poll">Опрос</button>
+        <button class="tab" data-tab="log">Журнал</button>
+      </div>
+
+      <!-- ===== Календарь ===== -->
+      <section data-pane="calendar">
+        <div class="card">
+          <div class="monthbar">
+            <button class="btn btn--soft btn--sm" data-move="-1">← Пред</button>
+            <span class="monthbar__label" id="monthLabel"></span>
+            <button class="btn btn--soft btn--sm" data-move="1">След →</button>
+          </div>
+          <div class="weekdays" id="weekdays"></div>
+          <div class="grid" id="calendar"></div>
+          <div class="muted" style="margin-top: 10px">
+            Нажмите на день, чтобы отметить, кто работал, и проставить выплату.
+          </div>
+        </div>
+        <div class="totals" id="totals"></div>
+      </section>
+
+      <!-- ===== Менеджеры ===== -->
+      <section data-pane="managers" hidden>
+        <div class="card">
+          <h3 class="card__title">Менеджеры</h3>
+          <div id="mgrList"></div>
+          <div class="btn-row" style="margin-top: 12px">
+            <button class="btn btn--soft btn--sm" id="mgrAdd">+ Добавить менеджера</button>
+            <button class="btn btn--line btn--sm" id="mgrSeed" hidden>Создать Хеду и Камилу</button>
+          </div>
+          <div class="muted" style="margin-top: 12px">
+            Телефон нужен для белого списка: выбор в опросе засчитывается только
+            с этих номеров. Формат любой — сравниваются последние 10 цифр.
+            Имя менеджера становится вариантом ответа в опросе.
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== Выплаты ===== -->
+      <section data-pane="pay" hidden>
+        <div class="card">
+          <div class="monthbar">
+            <button class="btn btn--soft btn--sm" data-move="-1">← Пред</button>
+            <span class="monthbar__label" id="payMonthLabel"></span>
+            <button class="btn btn--soft btn--sm" data-move="1">След →</button>
+          </div>
+          <div id="payList"></div>
+        </div>
+        <div class="card">
+          <h3 class="card__title">Отметить период оплаченным</h3>
+          <div class="grid2">
+            <div class="field"><label for="payFrom">С</label><input type="date" id="payFrom" /></div>
+            <div class="field"><label for="payTo">По</label><input type="date" id="payTo" /></div>
+          </div>
+          <div class="field">
+            <label for="payWho">Менеджер</label>
+            <select id="payWho"></select>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn--ok" id="payRange">Отметить оплаченным</button>
+            <button class="btn btn--line" id="unpayRange">Снять отметку</button>
+          </div>
+          <div class="muted" id="payMsg" style="margin-top: 10px"></div>
+        </div>
+      </section>
+
+      <!-- ===== Опрос ===== -->
+      <section data-pane="poll" hidden>
+        <div class="card" id="noSettingsCard" hidden>
+          <h3 class="card__title">Настройки не найдены</h3>
+          <p class="muted">
+            В коллекции <code>settings</code> нет ни одной записи. Создам её со
+            значениями по умолчанию.
+          </p>
+          <button class="btn" id="seedSettings">Создать настройки</button>
+        </div>
+
+        <div class="card" id="pollTodayCard">
+          <h3 class="card__title">Опрос за сегодня</h3>
+          <div id="pollToday" class="muted">—</div>
+          <div class="btn-row" style="margin-top: 12px">
+            <button class="btn" id="sendNow">Отправить опрос сейчас</button>
+            <button class="btn btn--line" id="resendNow">Переотправить заново</button>
+          </div>
+          <div class="muted" id="sendMsg" style="margin-top: 10px"></div>
+        </div>
+
+        <div class="card">
+          <h3 class="card__title">Расписание и поведение</h3>
+          <div class="check">
+            <input type="checkbox" id="sEnabled" />
+            <label for="sEnabled">Отправлять опрос автоматически</label>
+          </div>
+          <div class="grid2">
+            <div class="field">
+              <label for="sTime">Время отправки</label>
+              <input type="time" id="sTime" />
+            </div>
+            <div class="field">
+              <label for="sTz">Часовой пояс</label>
+              <input type="text" id="sTz" placeholder="Europe/Moscow" />
+            </div>
+          </div>
+          <div class="check">
+            <input type="checkbox" id="sSkipWeekends" />
+            <label for="sSkipWeekends">Пропускать субботу и воскресенье</label>
+          </div>
+          <div class="field">
+            <label for="sQuestion">Текст вопроса (дата подставляется автоматически)</label>
+            <input type="text" id="sQuestion" placeholder="Кто сегодня на смене?" />
+          </div>
+          <div class="grid2">
+            <div class="field">
+              <label for="sMode">Подтверждение выбора</label>
+              <select id="sMode">
+                <option value="confirm">Вторым опросом — «Подтверждаю / Отменить»</option>
+                <option value="hold">Отложенно — записать, если выбор не менялся</option>
+                <option value="instant">Сразу, без подтверждения</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="sHold">Задержка для отложенного режима, мин</label>
+              <input type="number" id="sHold" min="1" max="240" />
+            </div>
+          </div>
+          <div class="grid2">
+            <div class="field">
+              <label for="sCleanup">Убирать за собой в группе после фиксации</label>
+              <select id="sCleanup">
+                <option value="keep_result">Удалять опросы, оставлять итог «Зафиксировано»</option>
+                <option value="all">Удалять всё, не оставлять даже итог</option>
+                <option value="off">Ничего не удалять</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="sCleanupDelay">Через сколько секунд удалять</label>
+              <input type="number" id="sCleanupDelay" min="0" max="3600" />
+            </div>
+          </div>
+          <button class="btn" id="saveSchedule">Сохранить</button>
+          <span class="muted" id="scheduleMsg" style="margin-left: 10px"></span>
+          <div class="muted" style="margin-top: 10px">
+            WhatsApp разрешает удалять сообщения у всех участников 72 часа после
+            отправки — бот убирает свои опросы сразу после фиксации, так что в
+            это окно он укладывается. История дней и выборов остаётся в базе.
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card__title">Группа и доступ</h3>
+          <div class="field">
+            <label for="sGroup">ID группы WhatsApp</label>
+            <input type="text" id="sGroup" placeholder="120363XXXXXXXXXXXX@g.us" />
+          </div>
+          <div class="btn-row">
+            <button class="btn btn--soft btn--sm" id="loadGroups">Показать мои группы</button>
+          </div>
+          <div id="groupList" style="margin-top: 10px"></div>
+          <div class="field" style="margin-top: 14px">
+            <label for="sPhones">Дополнительные номера в белом списке (через запятую)</label>
+            <input type="text" id="sPhones" placeholder="79001234567, 79007654321" />
+          </div>
+          <div class="field">
+            <label for="sPin">PIN для входа в админку</label>
+            <input type="text" id="sPin" />
+          </div>
+          <button class="btn" id="saveGroup">Сохранить</button>
+          <span class="muted" id="groupMsg" style="margin-left: 10px"></span>
+          <div class="muted" style="margin-top: 12px">
+            WhatsApp не умеет ограничивать, кто голосует в групповом опросе.
+            Фильтр работает на нашей стороне: засчитывается выбор только
+            с телефонов менеджеров и номеров из этого списка, остальное
+            попадает в журнал как отклонённое.
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card__title">Подключение Green API</h3>
+          <div class="btn-row">
+            <button class="btn btn--soft btn--sm" id="checkGreen">Проверить</button>
+            <button class="btn btn--line btn--sm" id="fixGreen" hidden>Исправить настройки</button>
+          </div>
+          <div id="greenReport" style="margin-top: 12px"></div>
+        </div>
+      </section>
+
+      <!-- ===== Журнал ===== -->
+      <section data-pane="log" hidden>
+        <div class="card">
+          <h3 class="card__title">Выборы в опросах</h3>
+          <div class="tbl-wrap"><table id="logTable"></table></div>
+        </div>
+        <div class="card">
+          <h3 class="card__title">История опросов</h3>
+          <div class="tbl-wrap"><table id="pollTable"></table></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Модалка дня -->
+    <div class="modal" id="dayModal">
+      <div class="modal__box">
+        <h3 class="modal__title" id="dayTitle"></h3>
+        <div class="modal__sub" id="daySub"></div>
+        <div id="dayRows"></div>
+        <div class="field" style="margin-top: 10px">
+          <label for="dayNote">Заметка</label>
+          <input type="text" id="dayNote" placeholder="необязательно" />
+        </div>
+        <div class="btn-row" style="margin-top: 6px">
+          <button class="btn" id="daySave">Сохранить</button>
+          <button class="btn btn--line" id="dayClose">Отмена</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="assets/config.js"></script>
+    <script src="assets/util.js"></script>
+    <script src="assets/db.js"></script>
+    <script src="assets/green.js"></script>
+    <script src="assets/calendar.js"></script>
+    <script src="assets/bot.js"></script>
+    <script src="assets/admin.js"></script>
+  </body>
+</html>
