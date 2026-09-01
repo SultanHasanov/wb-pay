@@ -198,7 +198,11 @@ window.Bot = (() => {
     for (const p of stale) await DB.remove("polls", p.id).catch(() => {});
     if (stale.length) polls = polls.filter((p) => !stale.includes(p));
 
-    const existing = polls.filter((p) => p.date === dateISO && p.kind === "shift");
+    // Отменённые опросы день не занимают: иначе один тестовый прогон
+    // блокировал бы плановую отправку до конца суток.
+    const existing = polls.filter(
+      (p) => p.date === dateISO && p.kind === "shift" && p.status !== "cancelled"
+    );
 
     if (existing.length && !force) return { skipped: "already_sent" };
 
