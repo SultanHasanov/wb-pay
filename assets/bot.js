@@ -538,8 +538,27 @@ window.Bot = (() => {
     }
   }
 
+  /* Когда в Green API прописан webhookUrl, receiveNotification отключается —
+     режимы взаимоисключающие. Ловим это один раз и дальше очередь не трогаем:
+     выборы приходят на вебхук, а вкладке остаётся расписание и уборка. */
+  let webhookMode = false;
+
   async function drainStep(ctx) {
-    const n = await Green.receiveNotification(20);
+    if (webhookMode) return false;
+
+    let n;
+    try {
+      n = await Green.receiveNotification(20);
+    } catch (e) {
+      if (/webhook/i.test(e.message)) {
+        webhookMode = true;
+        status.webhookMode = true;
+        log("включён режим вебхука — очередь не опрашиваем");
+        return false;
+      }
+      throw e;
+    }
+
     if (!n || !n.receiptId) return false;
     try {
       await processNotification(n.body, ctx);
@@ -557,10 +576,16 @@ window.Bot = (() => {
      GitHub Actions (bot/tick.cjs) — логика одна на оба запуска.
      Возвращает true, если в очереди что-то было. */
   async function tick(ctx) {
+    await maintain(ctx);
+    return drainStep(ctx);
+  }
+
+  /* Обслуживание без чтения очереди: расписание, отложенные фиксации, уборка.
+     Именно это зовёт Vercel cron — очередь там читать нельзя и не нужно. */
+  async function maintain(ctx) {
     await scheduleStep(ctx);
     await holdStep(ctx);
     await cleanupStep(ctx);
-    return drainStep(ctx);
   }
 
   /* --- Главный цикл ---------------------------------------------------- */
@@ -579,7 +604,9 @@ window.Bot = (() => {
 
         status.lastTick = new Date().toISOString();
         status.lastError = null;
-        if (!had) await U.sleep(1000);
+        // В режиме вебхука очередь не читается и цикл ничем не блокируется —
+        // не крутим его вхолостую, обслуживания раз в полминуты достаточно.
+        if (!had) await U.sleep(status.webhookMode ? 30000 : 1000);
       } catch (e) {
         status.lastError = e.message;
         log("сбой цикла:", e.message);
@@ -611,7 +638,7 @@ window.Bot = (() => {
 
   return {
     start, stop, status,
-    tick, sendShiftPoll, loadCtx, processNotification,
+    tick, maintain, sendShiftPoll, loadCtx, processNotification,
     NOBODY, YES, NO,
   };
 })();

@@ -1,0 +1,12 @@
+{
+  "name": "wb-pay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Трекер смен менеджеров с опросом в WhatsApp через Green API",
+  "scripts": {
+    "bot": "node bot/tick.cjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

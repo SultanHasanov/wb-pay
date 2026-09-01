@@ -44,7 +44,9 @@ for (const k of ["MOKKY_URL", "GREEN_ID", "GREEN_TOKEN", "GREEN_API_URL"]) {
       const had = await Bot.tick(ctx);
       ticks++;
       if (had) handled++;
-      else await U.sleep(1000);
+      // В режиме вебхука очередь не читаем — цикл не блокируется, поэтому
+      // сбавляем обороты и просто обслуживаем расписание и уборку.
+      else await U.sleep(Bot.status.webhookMode ? 20000 : 1000);
     } catch (e) {
       errors++;
       console.error("сбой тика:", e.message);
