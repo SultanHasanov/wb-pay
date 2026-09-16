@@ -121,6 +121,7 @@
           <div class="btn-row" style="margin-top: 12px">
             <button class="btn" id="sendNow">Отправить опрос сейчас</button>
             <button class="btn btn--line" id="resendNow">Переотправить заново</button>
+            <button class="btn btn--line" id="eveningNow">Отправить вечерний сейчас</button>
           </div>
           <div class="muted" id="sendMsg" style="margin-top: 10px"></div>
         </div>
@@ -139,6 +140,16 @@
             <div class="field">
               <label for="sTz">Часовой пояс</label>
               <input type="text" id="sTz" placeholder="Europe/Moscow" />
+            </div>
+          </div>
+          <div class="grid2">
+            <div class="check">
+              <input type="checkbox" id="sEveningEnabled" />
+              <label for="sEveningEnabled">Вечернее напоминание «Завтра смена …»</label>
+            </div>
+            <div class="field">
+              <label for="sEveningTime">Время напоминания</label>
+              <input type="time" id="sEveningTime" />
             </div>
           </div>
           <div class="check">

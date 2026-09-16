@@ -478,6 +478,8 @@ window.Bot = (() => {
     const chatId = body.senderData && body.senderData.chatId;
     if (ctx.settings.groupId && chatId !== ctx.settings.groupId) return;
 
+    if (await handleEveningVote(pd, ctx)) return;
+
     const polls = await DB.list("polls");
     // Сначала по идентификатору сообщения, затем — запасной путь по тексту
     // вопроса (в него подставлена дата, поэтому он уникален для дня).
@@ -503,6 +505,144 @@ window.Bot = (() => {
 
     if (poll.kind === "confirm") await handleConfirmVote(poll, pd, ctx);
     else await handleShiftVote(poll, pd, ctx);
+  }
+
+  /* --- Вечернее напоминание ---------------------------------------------
+     «Завтра смена Хеды — 17.09: Смогу / Не смогу». Это только напоминание:
+     в polls, workdays и votelog ничего не пишется, уборка его не трогает.
+     В settings.evening лежит одна перезаписываемая запись { date, firstId,
+     secondId, stage } — только чтобы не отправить дважды и узнать опрос
+     в вебхуке. */
+  const CAN = "✅ Смогу";
+  const CANT = "❌ Не смогу";
+  const COME = "✅ Приду";
+  const CANT2 = "❌ Тоже не смогу";
+
+  /* Хеда → Хеды, Хава → Хавы, Вика → Вики. Для остальных имён — как есть. */
+  function genitive(name) {
+    const n = String(name || "");
+    if (/[гкхжшчщ]а$/i.test(n)) return n.slice(0, -1) + "и";
+    if (/а$/i.test(n)) return n.slice(0, -1) + "ы";
+    if (/я$/i.test(n)) return n.slice(0, -1) + "и";
+    return n;
+  }
+
+  function addDay(dateISO) {
+    const { y, m, d } = U.parseISO(dateISO);
+    const t = new Date(Date.UTC(y, m - 1, d + 1));
+    return {
+      date: U.iso(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()),
+      isWeekend: t.getUTCDay() === 0 || t.getUTCDay() === 6,
+    };
+  }
+
+  const eveningQuestion = (m, dateISO) =>
+    `Завтра смена ${genitive(m.name)} — ${U.fmtShort(dateISO)}`;
+  const backupQuestion = (m, first, dateISO) =>
+    `Завтра смена ${genitive(m.name)} — ${U.fmtShort(dateISO)} (${first.name} не сможет)`;
+
+  /* Работают по два дня подряд: смотрим, кто был на последнем отмеченном дне
+     и сколько дней подряд. Меньше двух — завтра снова он, иначе следующий.
+     Подмены учитываются сами, потому что опираемся на фактическую историю. */
+  async function tomorrowPair(ctx, todayISO) {
+    const active = activeManagers(ctx);
+    if (!active.length) throw new Error("Нет активных менеджеров");
+    const ids = active.map((m) => m.id);
+
+    const days = (await DB.list("workdays"))
+      .filter((w) => w.date <= todayISO && ids.includes(w.managerId))
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+
+    let first = active[0];
+    if (days.length) {
+      const lastId = days[0].managerId;
+      let streak = 0;
+      for (const w of days) {
+        if (w.managerId !== lastId) break;
+        streak++;
+      }
+      const idx = ids.indexOf(lastId);
+      first = streak < 2 ? active[idx] : active[(idx + 1) % active.length];
+    }
+    const second = active.find((m) => m.id !== first.id) || null;
+    return { first, second };
+  }
+
+  async function sendEveningPoll(ctx, { force = false } = {}) {
+    const s = ctx.settings;
+    if (!s.groupId) throw new Error("Не указан ID группы в настройках");
+
+    const tomorrow = addDay(U.tzNow(s.tz).date);
+    if (s.skipWeekends && tomorrow.isWeekend && !force) return { skipped: "weekend" };
+    if (!force && s.evening && s.evening.date === tomorrow.date) return { skipped: "already_sent" };
+
+    const { first, second } = await tomorrowPair(ctx, U.tzNow(s.tz).date);
+    const evening = {
+      date: tomorrow.date,
+      firstId: first.id,
+      secondId: second ? second.id : null,
+      stage: "first",
+    };
+    // Метку ставим до отправки: вкладка и cron не должны отправить дважды
+    await DB.saveSettings(s.id, { evening });
+    s.evening = evening;
+
+    await Green.sendPoll(s.groupId, eveningQuestion(first, tomorrow.date), [CAN, CANT]);
+    return { sent: true, date: tomorrow.date, manager: first.name };
+  }
+
+  /* Возвращает true, если уведомление относилось к вечернему опросу. */
+  async function handleEveningVote(pd, ctx) {
+    const s = ctx.settings;
+    const ev = s.evening;
+    if (!ev || !pd.name) return false;
+
+    const first = ctx.managers.find((m) => m.id === ev.firstId);
+    const second = ctx.managers.find((m) => m.id === ev.secondId);
+    if (!first) return false;
+
+    const isFirst = pd.name === eveningQuestion(first, ev.date);
+    const isBackup = !!second && pd.name === backupQuestion(second, first, ev.date);
+    if (!isFirst && !isBackup) return false;
+
+    // Засчитываем только того, кому адресован опрос, и доп. номера
+    const target = isFirst ? first : second;
+    const allowed = (phone) =>
+      U.samePhone(target.phone, phone) ||
+      (s.allowExtraPhones || []).some((p) => U.samePhone(p, phone));
+    const chosen = new Set();
+    for (const v of pd.votes || []) {
+      if ((v.optionVoters || []).some(allowed)) chosen.add(v.optionName);
+    }
+
+    const setStage = async (stage) => {
+      const next = { ...ev, stage };
+      await DB.saveSettings(s.id, { evening: next });
+      s.evening = next;
+    };
+
+    if (isFirst && chosen.has(CANT) && ev.stage === "first") {
+      if (!second) {
+        await setStage("nobody");
+        await say(ctx, `⚠️ Завтра, ${U.fmtShort(ev.date)}, на смену никто не выходит.`);
+        return true;
+      }
+      await setStage("backup");
+      await Green.sendPoll(s.groupId, backupQuestion(second, first, ev.date), [COME, CANT2]);
+    } else if (isBackup && chosen.has(CANT2) && ev.stage === "backup") {
+      await setStage("nobody");
+      await say(ctx, `⚠️ Завтра, ${U.fmtShort(ev.date)}, на смену никто не выходит.`);
+    }
+    return true;
+  }
+
+  async function eveningStep(ctx) {
+    const s = ctx.settings;
+    if (!s.enabled || !s.eveningEnabled || !s.groupId) return;
+    const now = U.tzNow(s.tz);
+    const [h, m] = String(s.eveningTime || "21:00").split(":").map(Number);
+    if (now.minutes < (h || 0) * 60 + (m || 0)) return;
+    await sendEveningPoll(ctx);
   }
 
   /* --- Шаги цикла ------------------------------------------------------ */
@@ -588,6 +728,7 @@ window.Bot = (() => {
      Именно это зовёт Vercel cron — очередь там читать нельзя и не нужно. */
   async function maintain(ctx) {
     await scheduleStep(ctx);
+    await eveningStep(ctx);
     await holdStep(ctx);
     await cleanupStep(ctx);
   }
@@ -642,7 +783,7 @@ window.Bot = (() => {
 
   return {
     start, stop, status,
-    tick, maintain, sendShiftPoll, loadCtx, processNotification,
+    tick, maintain, sendShiftPoll, sendEveningPoll, tomorrowPair, loadCtx, processNotification,
     NOBODY, YES, NO,
   };
 })();

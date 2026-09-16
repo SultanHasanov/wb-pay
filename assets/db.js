@@ -63,4 +63,7 @@ window.DEFAULT_SETTINGS = {
   cleanupDelaySec: 10,      // через сколько секунд после фиксации удалять
   allowExtraPhones: [],
   adminPin: "1234",
+  eveningEnabled: true,     // вечернее напоминание «Завтра смена …»
+  eveningTime: "21:00",
+  evening: null,            // служебное: { date, firstId, secondId, stage }, перезаписывается
 };

@@ -333,6 +333,8 @@
     el("sTime").value = s.pollTime || "09:00";
     el("sTz").value = s.tz || "Europe/Moscow";
     el("sSkipWeekends").checked = !!s.skipWeekends;
+    el("sEveningEnabled").checked = !!s.eveningEnabled;
+    el("sEveningTime").value = s.eveningTime || "21:00";
     el("sQuestion").value = s.question || "";
     el("sMode").value = s.confirmMode || "confirm";
     el("sHold").value = Number(s.holdMinutes) || 10;
@@ -376,6 +378,18 @@
       else if (res.skipped === "already_sent") msg.textContent = "Опрос за сегодня уже есть — используйте «Переотправить заново»";
       else msg.textContent = "Отправку перехватила другая вкладка";
       await refresh();
+    } catch (e) {
+      msg.textContent = "Ошибка: " + e.message;
+    }
+  }
+
+  async function sendEveningNow() {
+    const msg = el("sendMsg");
+    msg.textContent = "Отправляю…";
+    try {
+      const ctx = await Bot.loadCtx();
+      const res = await Bot.sendEveningPoll(ctx, { force: true });
+      msg.textContent = `Вечерний опрос отправлен: ${res.manager} — ${U.fmtShort(res.date)}`;
     } catch (e) {
       msg.textContent = "Ошибка: " + e.message;
     }
@@ -531,6 +545,8 @@
       pollTime: el("sTime").value || "09:00",
       tz: el("sTz").value.trim() || "Europe/Moscow",
       skipWeekends: el("sSkipWeekends").checked,
+      eveningEnabled: el("sEveningEnabled").checked,
+      eveningTime: el("sEveningTime").value || "21:00",
       question: el("sQuestion").value.trim() || DEFAULT_SETTINGS.question,
       confirmMode: el("sMode").value,
       holdMinutes: Number(el("sHold").value) || 10,
@@ -548,6 +564,7 @@
     el("resendNow").addEventListener("click", () => {
       if (confirm("Отправить новый опрос за сегодня? Прежний перестанет учитываться.")) sendPollNow(true);
     });
+    el("eveningNow").addEventListener("click", sendEveningNow);
     el("loadGroups").addEventListener("click", loadGroups);
     el("checkGreen").addEventListener("click", checkGreen);
     el("fixGreen").addEventListener("click", fixGreen);

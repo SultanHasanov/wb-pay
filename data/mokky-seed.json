@@ -38,7 +38,10 @@
       "cleanup": "keep_result",
       "cleanupDelaySec": 10,
       "allowExtraPhones": [],
-      "adminPin": "1234"
+      "adminPin": "1234",
+      "eveningEnabled": true,
+      "eveningTime": "21:00",
+      "evening": null
     }
   ]
 }
