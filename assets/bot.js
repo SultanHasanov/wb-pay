@@ -509,7 +509,8 @@ window.Bot = (() => {
 
   /* --- Вечернее напоминание ---------------------------------------------
      «Завтра смена Хеды — 17.09: Смогу / Не смогу». Это только напоминание:
-     в polls, workdays и votelog ничего не пишется, уборка его не трогает.
+     в polls, workdays и votelog ничего не пишется. После ответа опрос
+     удаляется из группы (если уборка не выключена) и остаётся итог.
      В settings.evening лежит одна перезаписываемая запись { date, firstId,
      secondId, stage } — только чтобы не отправить дважды и узнать опрос
      в вебхуке. */
@@ -621,17 +622,41 @@ window.Bot = (() => {
       s.evening = next;
     };
 
-    if (isFirst && chosen.has(CANT) && ev.stage === "first") {
-      if (!second) {
-        await setStage("nobody");
-        await say(ctx, `⚠️ Завтра, ${U.fmtShort(ev.date)}, на смену никто не выходит.`);
-        return true;
+    // Ответ получен — опрос больше не нужен. stanzaId в уведомлении и есть
+    // id исходного опроса, так что хранить его заранее не нужно.
+    const dropPoll = async () => {
+      if ((s.cleanup || "off") === "off" || !pd.stanzaId) return;
+      await Green.deleteMessage(s.groupId, pd.stanzaId).catch((e) =>
+        log("не удалось удалить вечерний опрос:", e.message));
+    };
+    const day = U.fmtShort(ev.date);
+    const nobody = `⚠️ Завтра, ${day}, на смену никто не выходит.`;
+
+    if (isFirst && ev.stage === "first" && chosen.size === 1) {
+      if (chosen.has(CAN)) {
+        await setStage("confirmed");
+        await dropPoll();
+        await say(ctx, `✅ ${first.name} подтвердила выход на смену завтра, ${day}.`);
+      } else if (chosen.has(CANT)) {
+        await setStage(second ? "backup" : "nobody");
+        await dropPoll();
+        if (second) {
+          await Green.sendPoll(s.groupId, backupQuestion(second, first, ev.date), [COME, CANT2]);
+        } else {
+          await say(ctx, nobody);
+        }
       }
-      await setStage("backup");
-      await Green.sendPoll(s.groupId, backupQuestion(second, first, ev.date), [COME, CANT2]);
-    } else if (isBackup && chosen.has(CANT2) && ev.stage === "backup") {
-      await setStage("nobody");
-      await say(ctx, `⚠️ Завтра, ${U.fmtShort(ev.date)}, на смену никто не выходит.`);
+    } else if (isBackup && ev.stage === "backup" && chosen.size === 1) {
+      if (chosen.has(COME)) {
+        await setStage("confirmed");
+        await dropPoll();
+        await say(ctx,
+          `✅ ${second.name} подтвердила выход на смену завтра вместо ${genitive(first.name)}, ${day}.`);
+      } else if (chosen.has(CANT2)) {
+        await setStage("nobody");
+        await dropPoll();
+        await say(ctx, nobody);
+      }
     }
     return true;
   }
