@@ -8,7 +8,8 @@ const { Bot, DB, U, Green } = require("./_bot.js");
 const AI = require("./_ai.js");
 
 /* --- ИИ-собеседник ----------------------------------------------------
-   Отвечает в группе, только когда к боту обращаются: сообщение начинается
+   Отвечает в любой группе, где состоит номер бота, но только когда к нему
+   обращаются: сообщение начинается
    с «бот»/«bot», в нём упомянут номер бота или это reply на его сообщение.
    Свои сообщения бота приходят другим typeWebhook, так что петли нет. */
 const CALL_RE = /^\s*(бот|bot)(?=[\s,:!?.]|$)[\s,:!?.]*/i;
@@ -25,7 +26,8 @@ async function maybeChat(body, ctx) {
   if (!["textMessage", "extendedTextMessage", "quotedMessage"].includes(md.typeMessage)) return;
 
   const chatId = body.senderData && body.senderData.chatId;
-  if (!ctx.settings.groupId || chatId !== ctx.settings.groupId) return;
+  if (!chatId || !chatId.endsWith("@g.us")) return;
+  const isMain = chatId === ctx.settings.groupId;
 
   const wid = (body.instanceData && body.instanceData.wid) || "";
   const botNum = wid.replace(/\D/g, "");
@@ -38,14 +40,19 @@ async function maybeChat(body, ctx) {
 
   text = text.replace(CALL_RE, "").replace(`@${botNum}`, "").trim() || "привет";
 
-  const managers = ctx.managers.filter((m) => m.active !== false).map((m) => m.name);
+  // Смены и имена менеджеров — только для рабочей группы, в чужие не выносим
   const now = U.tzNow(ctx.settings.tz);
-  const today = (await DB.list("workdays").catch(() => []))
-    .filter((w) => w.date === now.date)
-    .map((w) => (ctx.managers.find((m) => m.id === w.managerId) || {}).name)
-    .filter(Boolean);
-  const facts = `сегодня ${U.fmtShort(now.date)}, ${now.hm}; на смене сегодня: ` +
-    (today.length ? today.join(", ") : "пока никто не отмечен") + ".";
+  let managers = [];
+  let facts = `сегодня ${U.fmtShort(now.date)}, ${now.hm}.`;
+  if (isMain) {
+    managers = ctx.managers.filter((m) => m.active !== false).map((m) => m.name);
+    const today = (await DB.list("workdays").catch(() => []))
+      .filter((w) => w.date === now.date)
+      .map((w) => (ctx.managers.find((m) => m.id === w.managerId) || {}).name)
+      .filter(Boolean);
+    facts = `сегодня ${U.fmtShort(now.date)}, ${now.hm}; на смене сегодня: ` +
+      (today.length ? today.join(", ") : "пока никто не отмечен") + ".";
+  }
 
   const answer = await AI.reply(text, {
     author: (body.senderData && body.senderData.senderName) || "",
