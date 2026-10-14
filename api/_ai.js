@@ -6,12 +6,27 @@
 
 const API = "https://generativelanguage.googleapis.com/v1beta/models";
 
-// Модели перебираются по очереди: Google временами отвечает 503
-// «high demand» или снимает старую модель — тогда берём следующую.
-const MODELS = (process.env.GEMINI_MODEL || "gemini-3.5-flash-lite,gemini-flash-latest,gemini-flash-lite-latest")
+// Модели перебираются по кругу: Google временами отвечает 503
+// «high demand» или подвисает на 5–10 с под нагрузкой — тогда берём
+// следующую. Полные flash-модели в часы пик почти всегда 503, поэтому
+// по умолчанию только лёгкие и gemma.
+const MODELS = (process.env.GEMINI_MODEL ||
+  "gemini-3.5-flash-lite,gemini-flash-lite-latest,gemini-3.1-flash-lite,gemma-4-31b-it")
   .split(",").map((s) => s.trim()).filter(Boolean);
 
+// Функция на Vercel живёт 30 с (vercel.json), оставляем запас на отправку
+const BUDGET_MS = 22000;
+const TRY_MS = 15000;
+
 const MAX_LEN = 300;
+
+// Если Google так и не ответил — лучше пошутить заготовкой, чем молчать
+const FALLBACKS = [
+  "Мозг ушёл на перекур, вернётся через минутку ☕",
+  "Секунду, мысли застряли в пробке. Спросите ещё раз чуть позже 🚗",
+  "Я бы ответил остроумно, но остроумие сейчас на обеде 🍲",
+  "Сервер думает так усердно, что задымился. Повторите вопрос попозже 🔥",
+];
 
 // Без менеджеров — это посторонняя группа, про смены там молчим
 const prompt = (managers, facts) =>
@@ -23,9 +38,9 @@ const prompt = (managers, facts) =>
   "Если спрашивают по делу — ответь по делу, но с шуткой, факты не выдумывай." +
   (facts ? ` Факты на сейчас: ${facts}` : "");
 
-async function ask(model, body) {
+async function ask(model, body, ms) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 9000);
+  const timer = setTimeout(() => ctrl.abort(), ms);
   try {
     const res = await fetch(`${API}/${model}:generateContent`, {
       method: "POST",
@@ -37,9 +52,17 @@ async function ask(model, body) {
       signal: ctrl.signal,
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(`${model} → ${res.status} ${(data.error && data.error.message) || ""}`);
+    if (!res.ok) {
+      const err = new Error(`${model} → ${res.status} ${(data.error && data.error.message) || ""}`);
+      // Ключ неверный или запрещён — другие модели не помогут
+      err.fatal = [400, 401, 403].includes(res.status);
+      throw err;
+    }
     const parts = (((data.candidates || [])[0] || {}).content || {}).parts || [];
     return parts.filter((p) => !p.thought).map((p) => p.text || "").join("").trim();
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error(`${model} → таймаут ${ms} мс`);
+    throw e;
   } finally {
     clearTimeout(timer);
   }
@@ -59,18 +82,18 @@ async function reply(text, { author = "", managers = [], facts = "" } = {}) {
     generationConfig: { temperature: 1, maxOutputTokens: 1024 },
   };
 
-  let lastErr;
-  for (const model of MODELS) {
+  const deadline = Date.now() + BUDGET_MS;
+  for (let i = 0; Date.now() < deadline - 1000; i++) {
+    const model = MODELS[i % MODELS.length];
     try {
-      const out = await ask(model, body);
+      const out = await ask(model, body, Math.min(TRY_MS, deadline - Date.now()));
       if (out) return out.length > MAX_LEN ? out.slice(0, MAX_LEN - 1) + "…" : out;
     } catch (e) {
-      lastErr = e;
       console.error("gemini:", e.message);
+      if (e.fatal) break;
     }
   }
-  if (lastErr) throw lastErr;
-  return null;
+  return FALLBACKS[Math.floor(Math.random() * FALLBACKS.length)];
 }
 
 module.exports = { reply };
