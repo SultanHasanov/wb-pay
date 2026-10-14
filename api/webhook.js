@@ -41,23 +41,26 @@ async function maybeChat(body, ctx) {
   text = text.replace(CALL_RE, "").replace(`@${botNum}`, "").trim() || "привет";
 
   // Смены и имена менеджеров — только для рабочей группы, в чужие не выносим
-  const now = U.tzNow(ctx.settings.tz);
   let managers = [];
-  let facts = `сегодня ${U.fmtShort(now.date)}, ${now.hm}.`;
+  let facts = "";
   if (isMain) {
+    const today = U.tzNow(ctx.settings.tz).date;
     managers = ctx.managers.filter((m) => m.active !== false).map((m) => m.name);
-    const today = (await DB.list("workdays").catch(() => []))
-      .filter((w) => w.date === now.date)
+    const onShift = (await DB.list("workdays").catch(() => []))
+      .filter((w) => w.date === today)
       .map((w) => (ctx.managers.find((m) => m.id === w.managerId) || {}).name)
       .filter(Boolean);
-    facts = `сегодня ${U.fmtShort(now.date)}, ${now.hm}; на смене сегодня: ` +
-      (today.length ? today.join(", ") : "пока никто не отмечен") + ".";
+    facts = `на смене сегодня: ${onShift.length ? onShift.join(", ") : "пока никто не отмечен"}.`;
   }
+
+  const q = md.quotedMessage || {};
+  const quotedText = q.textMessage || q.caption || "";
 
   const answer = await AI.reply(text, {
     author: (body.senderData && body.senderData.senderName) || "",
     managers,
     facts,
+    quoted: quotedText ? { text: quotedText.slice(0, 300), mine: replied } : null,
   });
   if (answer) await Green.sendMessage(chatId, answer, md.idMessage);
 }
