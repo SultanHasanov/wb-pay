@@ -38,8 +38,11 @@ window.Green = (() => {
       });
     },
 
-    sendMessage(chatId, message) {
-      return req("sendMessage", { verb: "POST", body: { chatId, message } });
+    /* quotedMessageId — ответить цитатой на это сообщение. */
+    sendMessage(chatId, message, quotedMessageId) {
+      const body = { chatId, message };
+      if (quotedMessageId) body.quotedMessageId = quotedMessageId;
+      return req("sendMessage", { verb: "POST", body });
     },
 
     /* Удаление у всех участников работает 72 часа после отправки,

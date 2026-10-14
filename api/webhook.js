@@ -4,7 +4,56 @@
    Адрес этой функции нужно прописать в Green API как webhookUrl:
    https://<ваш-проект>.vercel.app/api/webhook */
 
-const { Bot, DB, U } = require("./_bot.js");
+const { Bot, DB, U, Green } = require("./_bot.js");
+const AI = require("./_ai.js");
+
+/* --- ИИ-собеседник ----------------------------------------------------
+   Отвечает в группе, только когда к боту обращаются: сообщение начинается
+   с «бот»/«bot», в нём упомянут номер бота или это reply на его сообщение.
+   Свои сообщения бота приходят другим typeWebhook, так что петли нет. */
+const CALL_RE = /^\s*(бот|bot)(?=[\s,:!?.]|$)[\s,:!?.]*/i;
+
+function chatText(md) {
+  if (md.typeMessage === "textMessage") return (md.textMessageData || {}).textMessage || "";
+  return (md.extendedTextMessageData || {}).text || "";
+}
+
+async function maybeChat(body, ctx) {
+  if (!process.env.GEMINI_API_KEY) return;
+  if (!body || body.typeWebhook !== "incomingMessageReceived") return;
+  const md = body.messageData || {};
+  if (!["textMessage", "extendedTextMessage", "quotedMessage"].includes(md.typeMessage)) return;
+
+  const chatId = body.senderData && body.senderData.chatId;
+  if (!ctx.settings.groupId || chatId !== ctx.settings.groupId) return;
+
+  const wid = (body.instanceData && body.instanceData.wid) || "";
+  const botNum = wid.replace(/\D/g, "");
+  let text = chatText(md);
+
+  const called = CALL_RE.test(text);
+  const mentioned = !!botNum && text.includes(`@${botNum}`);
+  const replied = !!wid && (md.quotedMessage || {}).participant === wid;
+  if (!called && !mentioned && !replied) return;
+
+  text = text.replace(CALL_RE, "").replace(`@${botNum}`, "").trim() || "привет";
+
+  const managers = ctx.managers.filter((m) => m.active !== false).map((m) => m.name);
+  const now = U.tzNow(ctx.settings.tz);
+  const today = (await DB.list("workdays").catch(() => []))
+    .filter((w) => w.date === now.date)
+    .map((w) => (ctx.managers.find((m) => m.id === w.managerId) || {}).name)
+    .filter(Boolean);
+  const facts = `сегодня ${U.fmtShort(now.date)}, ${now.hm}; на смене сегодня: ` +
+    (today.length ? today.join(", ") : "пока никто не отмечен") + ".";
+
+  const answer = await AI.reply(text, {
+    author: (body.senderData && body.senderData.senderName) || "",
+    managers,
+    facts,
+  });
+  if (answer) await Green.sendMessage(chatId, answer, md.idMessage);
+}
 
 /* Дождаться отложенной уборки, если её срок вот-вот наступит.
    В serverless нет фонового таймера: функция завершится раньше, чем
@@ -40,6 +89,9 @@ module.exports = async (req, res) => {
 
     await Bot.processNotification(body, ctx);
     await finishCleanup(ctx);
+
+    // Сбой ИИ не должен давать 500: Green API повторил бы доставку зря
+    await maybeChat(body, ctx).catch((e) => console.error("ai chat:", e.message));
 
     res.status(200).json({ ok: true });
   } catch (e) {
