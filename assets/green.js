@@ -70,6 +70,11 @@ window.Green = (() => {
       return req("deleteNotification", { verb: "DELETE", tail: `/${receiptId}` });
     },
 
+    /* Последние count сообщений чата, новые первыми. */
+    getChatHistory(chatId, count = 12) {
+      return req("getChatHistory", { verb: "POST", body: { chatId, count } });
+    },
+
     getStateInstance: () => req("getStateInstance"),
     getSettings: () => req("getSettings"),
     setSettings: (obj) => req("setSettings", { verb: "POST", body: obj }),

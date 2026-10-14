@@ -9,10 +9,34 @@ const AI = require("./_ai.js");
 
 /* --- ИИ-собеседник ----------------------------------------------------
    Отвечает в любой группе, где состоит номер бота, но только когда к нему
-   обращаются: сообщение начинается
-   с «бот»/«bot», в нём упомянут номер бота или это reply на его сообщение.
+   обращаются: сообщение начинается с «бот»/«bot», в нём упомянут номер
+   бота или это reply на его сообщение. На одни смайлики не отвечает.
+   Если бота отметили в ответе на чужое сообщение — отвечает на то сообщение.
    Свои сообщения бота приходят другим typeWebhook, так что петли нет. */
 const CALL_RE = /^\s*(бот|bot)(?=[\s,:!?.]|$)[\s,:!?.]*/i;
+
+// Как сообщение выглядит для модели: у медиа содержимого нет, только метка
+const MEDIA = {
+  audioMessage: "[голосовое]", stickerMessage: "[стикер]", imageMessage: "[фото]",
+  videoMessage: "[видео]", documentMessage: "[файл]",
+};
+
+function msgText(m) {
+  let what = m.textMessage || (m.extendedTextMessage || {}).text || "";
+  if (!what && MEDIA[m.typeMessage]) what = MEDIA[m.typeMessage];
+  if (what && m.caption) what += ` ${m.caption}`;
+  return String(what).slice(0, 300);
+}
+
+function msgAuthor(m) {
+  if (m.type === "outgoing") return m.sendByApi ? "Ты" : "Владелец номера";
+  return m.senderName || m.senderContactName || "Кто-то";
+}
+
+function historyLine(m) {
+  const what = msgText(m);
+  return what ? `${msgAuthor(m)}: ${what}` : null;
+}
 
 function chatText(md) {
   if (md.typeMessage === "textMessage") return (md.textMessageData || {}).textMessage || "";
@@ -33,12 +57,19 @@ async function maybeChat(body, ctx) {
   const botNum = wid.replace(/\D/g, "");
   let text = chatText(md);
 
+  const q = md.quotedMessage || {};
   const called = CALL_RE.test(text);
   const mentioned = !!botNum && text.includes(`@${botNum}`);
-  const replied = !!wid && (md.quotedMessage || {}).participant === wid;
+  const replied = !!wid && q.participant === wid;
   if (!called && !mentioned && !replied) return;
 
-  text = text.replace(CALL_RE, "").replace(`@${botNum}`, "").trim() || "привет";
+  // Бота отметили в ответе на чужое сообщение — отвечаем на то сообщение
+  const forOther = (called || mentioned) && !!q.stanzaId && !replied;
+
+  text = text.replace(CALL_RE, "").replace(`@${botNum}`, "").trim();
+  if (!text && called && !forOther) text = "привет";
+  // Ответ смайликами на сообщение бота — это реакция, а не вопрос
+  if (!forOther && !/[\p{L}\p{N}]/u.test(text)) return;
 
   // Смены и имена менеджеров — только для рабочей группы, в чужие не выносим
   let managers = [];
@@ -53,16 +84,38 @@ async function maybeChat(body, ctx) {
     facts = `на смене сегодня: ${onShift.length ? onShift.join(", ") : "пока никто не отмечен"}.`;
   }
 
-  const q = md.quotedMessage || {};
-  const quotedText = q.textMessage || q.caption || "";
+  // Последние сообщения чата, новые первыми. Без них модель отвечает
+  // вслепую и выдаёт афоризмы мимо разговора.
+  const raw = await Green.getChatHistory(chatId, 13).catch((e) => {
+    console.error("history:", e.message);
+    return [];
+  }) || [];
+  const history = raw
+    .filter((m) => m.idMessage !== md.idMessage)
+    .slice(0, 12)
+    .reverse()
+    .map(historyLine)
+    .filter(Boolean);
+
+  // Процитированное сообщение: автора берём из истории, если оно там есть
+  const src = raw.find((m) => m.idMessage === q.stanzaId);
+  const quotedText = (src && msgText(src)) || msgText(q);
+  const quoted = quotedText ? {
+    text: quotedText,
+    mine: replied,
+    author: src ? msgAuthor(src) : "",
+  } : null;
 
   const answer = await AI.reply(text, {
     author: (body.senderData && body.senderData.senderName) || "",
     managers,
     facts,
-    quoted: quotedText ? { text: quotedText.slice(0, 300), mine: replied } : null,
+    quoted,
+    forOther,
+    history,
   });
-  if (answer) await Green.sendMessage(chatId, answer, md.idMessage);
+  // Отвечаем цитатой на то сообщение, на которое просили ответить
+  if (answer) await Green.sendMessage(chatId, answer, forOther ? q.stanzaId : md.idMessage);
 }
 
 /* Дождаться отложенной уборки, если её срок вот-вот наступит.
