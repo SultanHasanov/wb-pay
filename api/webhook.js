@@ -114,8 +114,14 @@ async function maybeChat(body, ctx) {
     forOther,
     history,
   });
-  // Отвечаем цитатой на то сообщение, на которое просили ответить
-  if (answer) await Green.sendMessage(chatId, answer, forOther ? q.stanzaId : md.idMessage);
+  if (!answer) return;
+
+  // Отвечаем цитатой на то сообщение, на которое просили ответить, и
+  // отмечаем его автора: «@79991234567» в тексте WhatsApp показывает
+  // как упоминание. Скрытые @lid-номера отметить нельзя — тогда без неё.
+  const to = forOther ? q.participant : (body.senderData && body.senderData.sender);
+  const tag = to && to.endsWith("@c.us") && to !== wid ? `@${to.replace(/\D/g, "")} ` : "";
+  await Green.sendMessage(chatId, tag + answer, forOther ? q.stanzaId : md.idMessage);
 }
 
 /* Дождаться отложенной уборки, если её срок вот-вот наступит.
