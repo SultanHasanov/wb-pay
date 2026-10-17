@@ -15,7 +15,7 @@ require("../assets/bot.js");
 
 /* Ключи можно держать в assets/config.js (как сейчас) либо задать
    переменными окружения в настройках проекта Vercel — приоритет у них. */
-for (const k of ["MOKKY_URL", "GREEN_ID", "GREEN_TOKEN", "GREEN_API_URL"]) {
+for (const k of ["MOKKY_URL", "GREEN_ID", "GREEN_TOKEN", "GREEN_API_URL", "GREEN_MEDIA_URL"]) {
   if (process.env[k]) global.CFG[k] = process.env[k];
 }
 

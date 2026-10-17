@@ -12,7 +12,8 @@
   ],
   "functions": {
     "api/*.js": {
-      "maxDuration": 30
+      "maxDuration": 60,
+      "includeFiles": "node_modules/ffmpeg-static/ffmpeg"
     }
   }
 }

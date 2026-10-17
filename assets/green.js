@@ -75,6 +75,29 @@ window.Green = (() => {
       return req("getChatHistory", { verb: "POST", body: { chatId, count } });
     },
 
+    /* Отправка файла. Green API просит грузить файлы на media-хост
+       инстанса (7107.api… → 7107.media…). Тип сообщения он выбирает по
+       расширению: .ogg с opus уходит голосовым. Только для сервера —
+       в браузере файлы не шлём. */
+    async sendFileByUpload(chatId, data, fileName, quotedMessageId) {
+      if (!CFG.greenReady()) {
+        throw new Error("GREEN_ID / GREEN_TOKEN не заполнены в assets/config.js");
+      }
+      const media = CFG.GREEN_MEDIA_URL || CFG.GREEN_API_URL.replace(".api.", ".media.");
+      const form = new FormData();
+      form.append("chatId", chatId);
+      form.append("file", new Blob([data]), fileName);
+      form.append("fileName", fileName);
+      if (quotedMessageId) form.append("quotedMessageId", quotedMessageId);
+      const res = await fetch(
+        `${media}/waInstance${CFG.GREEN_ID}/sendFileByUpload/${CFG.GREEN_TOKEN}`,
+        { method: "POST", body: form },
+      );
+      const text = await res.text();
+      if (!res.ok) throw new Error(`Green API sendFileByUpload → ${res.status} ${text}`.trim());
+      return text ? JSON.parse(text) : null;
+    },
+
     /* Ссылка на файл медиа-сообщения: { downloadUrl }. Нужна для цитат —
        у процитированного голосового своей ссылки в вебхуке нет. */
     downloadFile(chatId, idMessage) {

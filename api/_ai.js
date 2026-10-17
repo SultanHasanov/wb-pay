@@ -106,10 +106,11 @@ async function ask(model, body, ms) {
    отметили, чтобы он ответил на процитированное чужое сообщение,
    history — последние сообщения чата «Имя: текст», старые первыми,
    audio — голосовое { mime, data: base64 }: само сообщение или,
-   при forOther, процитированное. */
+   при forOther, процитированное, voice — ответ озвучат голосом,
+   budgetMs — сколько времени дать модели (на озвучку нужен свой запас). */
 async function reply(text, {
   author = "", managers = [], facts = "", quoted = null, forOther = false, history = [],
-  audio = null,
+  audio = null, voice = false, budgetMs = BUDGET_MS,
 } = {}) {
   if (!process.env.GEMINI_API_KEY) return null;
   if (!text && !audio && !(forOther && quoted)) return null;
@@ -139,6 +140,12 @@ async function reply(text, {
     lines.push(author ? `${author}: ${said}` : said);
   }
 
+  if (voice) {
+    lines.push("", "Тебя попросили ответить голосом — твой ответ озвучат. Пиши как устную речь: " +
+      "без эмодзи, ссылок, списков и скобок, числа словами. До трёх коротких предложений. " +
+      "Не говори, что отвечаешь голосом, — просто ответь.");
+  }
+
   const parts = [{ text: lines.join("\n") }];
   if (audio) parts.push({ inline_data: { mime_type: audio.mime, data: audio.data } });
   const models = audio ? MODELS.filter(hearsAudio) : MODELS;
@@ -151,7 +158,7 @@ async function reply(text, {
     generationConfig: { temperature: 0.9, maxOutputTokens: 2048 },
   };
 
-  const deadline = Date.now() + BUDGET_MS;
+  const deadline = Date.now() + budgetMs;
   for (let i = 0; Date.now() < deadline - 1000; i++) {
     const model = models[i % models.length];
     try {

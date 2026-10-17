@@ -6,6 +6,12 @@
 
 const { Bot, DB, U, Green } = require("./_bot.js");
 const AI = require("./_ai.js");
+const TTS = require("./_tts.js");
+
+// Ответ голосом укладываем в 60 с функции (vercel.json):
+// текст до 15 с, озвучка с перекодированием до 20 с, остальное — отправка
+const VOICE_TEXT_MS = 15000;
+const VOICE_TTS_MS = 20000;
 
 /* --- ИИ-собеседник ----------------------------------------------------
    Отвечает в любой группе, где состоит номер бота, но только когда к нему
@@ -16,6 +22,11 @@ const AI = require("./_ai.js");
    его позвали в ответ на чужое голосовое («бот, что он сказал?»).
    Свои сообщения бота приходят другим typeWebhook, так что петли нет. */
 const CALL_RE = /^\s*(бот|bot)(?=[\s,:!?.]|$)[\s,:!?.]*/i;
+
+/* «скажи голосом», «ответь голосовым» — ответить голосовым сообщением.
+   Слово «голосовое» сюда не входит: «расшифруй голосовое» — просьба
+   послушать, а не ответить голосом. */
+const VOICE_RE = /(?:(?:скажи|ответь|расскажи|отправь|запиши|скинь)\s+)?голос(?:ом|овым)(?=[\s,:!?.]|$)[\s,:!?.]*/iu;
 
 // Как сообщение выглядит для модели: у медиа содержимого нет, только метка
 const MEDIA = {
@@ -93,6 +104,9 @@ async function maybeChat(body, ctx) {
   const forOther = (called || mentioned) && !!q.stanzaId && !replied;
 
   text = text.replace(CALL_RE, "").replace(`@${botNum}`, "").trim();
+  const wantVoice = VOICE_RE.test(text);
+  if (wantVoice) text = text.replace(VOICE_RE, " ").replace(/\s+/g, " ").trim();
+  if (!text && wantVoice && !forOther) text = "скажи что-нибудь";
   if (!text && called && !forOther) text = "привет";
   // Ответ смайликами на сообщение бота — это реакция, а не вопрос.
   // У голосового текста нет вовсе — его смысл в звуке.
@@ -147,6 +161,9 @@ async function maybeChat(body, ctx) {
 
   const answer = await AI.reply(text, {
     audio,
+    voice: wantVoice,
+    // Голосом: модели меньше времени, остальное — на озвучку и отправку
+    budgetMs: wantVoice ? VOICE_TEXT_MS : undefined,
     author: (body.senderData && body.senderData.senderName) || "",
     managers,
     facts,
@@ -154,9 +171,26 @@ async function maybeChat(body, ctx) {
     forOther,
     history,
   });
+  if (!answer) return;
   // Отвечаем цитатой на то сообщение, на которое просили ответить.
   // Без @-упоминания автора: цитаты достаточно, номер в тексте — лишний.
-  if (answer) await Green.sendMessage(chatId, answer, forOther ? q.stanzaId : md.idMessage);
+  const quoteId = forOther ? q.stanzaId : md.idMessage;
+
+  // Голосом не вышло (квота, таймаут, ffmpeg) — тот же ответ текстом
+  if (wantVoice) {
+    const ogg = await TTS.speak(answer, VOICE_TTS_MS).catch((e) => {
+      console.error("tts:", e.message);
+      return null;
+    });
+    if (ogg) {
+      try {
+        return await Green.sendFileByUpload(chatId, ogg, "voice.ogg", quoteId);
+      } catch (e) {
+        console.error("voice send:", e.message);
+      }
+    }
+  }
+  await Green.sendMessage(chatId, answer, quoteId);
 }
 
 /* Дождаться отложенной уборки, если её срок вот-вот наступит.
