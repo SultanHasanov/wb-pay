@@ -107,11 +107,13 @@ async function maybeChat(body, ctx) {
   text = text.replace(CALL_RE, "").replace(`@${botNum}`, "").trim();
   const wantVoice = VOICE_RE.test(text);
   if (wantVoice) text = text.replace(VOICE_RE, " ").replace(/\s+/g, " ").trim();
-  if (!text && wantVoice && !forOther) text = "скажи что-нибудь";
+  // «скажи голосом» ответом на сообщение бота — озвучить это сообщение
+  const readAloud = wantVoice && replied && !text;
+  if (!text && wantVoice && !forOther && !readAloud) text = "скажи что-нибудь";
   if (!text && called && !forOther) text = "привет";
   // Ответ смайликами на сообщение бота — это реакция, а не вопрос.
   // У голосового текста нет вовсе — его смысл в звуке.
-  if (!forOther && !isVoice && !/[\p{L}\p{N}]/u.test(text)) return;
+  if (!forOther && !isVoice && !readAloud && !/[\p{L}\p{N}]/u.test(text)) return;
 
   // Смены и имена менеджеров — только для рабочей группы, в чужие не выносим
   let managers = [];
@@ -160,6 +162,11 @@ async function maybeChat(body, ctx) {
   // Звук не скачался — молчим: без него ответить на голосовое нечем
   if (isVoice && !audio) return;
 
+  // Озвучиваем текст, а не метку вроде «[голосовое]»
+  if (readAloud && quoted && !Object.values(MEDIA).includes(quoted.text)) {
+    return sendVoice(chatId, quoted.text, md.idMessage);
+  }
+
   let answer = await AI.reply(text, {
     audio,
     voice: wantVoice,
@@ -176,27 +183,31 @@ async function maybeChat(body, ctx) {
   if (!answer) return;
   // Метку [голос] модель ставит, когда её просят ответить голосом
   const voiceReply = wantVoice || /\[\s*голос\s*\]/iu.test(answer);
-  answer = answer.replace(VOICE_TAG, "").trim();
+  // Модель пишет «[голос]: текст» — двоеточие уходит вместе с меткой
+  answer = answer.replace(VOICE_TAG, "").replace(/^[\s:–—-]+/, "").trim();
   if (!answer) return;
   // Отвечаем цитатой на то сообщение, на которое просили ответить.
   // Без @-упоминания автора: цитаты достаточно, номер в тексте — лишний.
   const quoteId = forOther ? q.stanzaId : md.idMessage;
 
-  // Голосом не вышло (квота, таймаут, ffmpeg) — тот же ответ текстом
-  if (voiceReply) {
-    const ogg = await TTS.speak(answer, VOICE_TTS_MS).catch((e) => {
-      console.error("tts:", e.message);
-      return null;
-    });
-    if (ogg) {
-      try {
-        return await Green.sendFileByUpload(chatId, ogg, "voice.ogg", quoteId);
-      } catch (e) {
-        console.error("voice send:", e.message);
-      }
+  if (voiceReply) return sendVoice(chatId, answer, quoteId);
+  await Green.sendMessage(chatId, answer, quoteId);
+}
+
+// Голосом не вышло (квота, таймаут, ffmpeg) — тот же текст обычным сообщением
+async function sendVoice(chatId, text, quoteId) {
+  const ogg = await TTS.speak(text, VOICE_TTS_MS).catch((e) => {
+    console.error("tts:", e.message);
+    return null;
+  });
+  if (ogg) {
+    try {
+      return await Green.sendFileByUpload(chatId, ogg, "voice.ogg", quoteId);
+    } catch (e) {
+      console.error("voice send:", e.message);
     }
   }
-  await Green.sendMessage(chatId, answer, quoteId);
+  return Green.sendMessage(chatId, text, quoteId);
 }
 
 /* Дождаться отложенной уборки, если её срок вот-вот наступит.
@@ -216,6 +227,14 @@ async function finishCleanup(ctx, limitMs = 15000) {
 }
 
 module.exports = async (req, res) => {
+  // Проверка озвучки без отправки в чат: /api/webhook?diag=voice
+  if (req.method === "GET" && req.query && req.query.diag === "voice") {
+    const log = [];
+    const t = Date.now();
+    const ogg = await TTS.speak("Проверка связи, раз, два, три.", VOICE_TTS_MS, log);
+    return res.status(200).json({ ok: !!ogg, bytes: ogg ? ogg.length : 0, ms: Date.now() - t, log });
+  }
+
   if (req.method !== "POST") {
     return res.status(200).json({ ok: true, hint: "вебхук на месте, ждёт POST от Green API" });
   }

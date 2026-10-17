@@ -87,18 +87,34 @@ function toOgg(sound) {
 }
 
 /* Озвучить text за budgetMs. Возвращает ogg/opus или null —
-   тогда вызывающий отправит ответ текстом. */
-async function speak(text, budgetMs = 20000) {
-  if (!process.env.GEMINI_API_KEY || !text || !ffmpeg) return null;
+   тогда вызывающий отправит ответ текстом. В log складываются
+   причины неудач — для диагностики. */
+async function speak(text, budgetMs = 20000, log = []) {
+  const fail = (msg) => {
+    log.push(msg);
+    console.error("tts:", msg);
+    return null;
+  };
+  if (!process.env.GEMINI_API_KEY) return fail("нет GEMINI_API_KEY");
+  if (!ffmpeg) return fail("нет ffmpeg-static");
+  if (!text) return null;
   const deadline = Date.now() + budgetMs;
   for (const model of MODELS) {
     const left = deadline - Date.now() - 2000;
-    if (left < 3000) break;
+    if (left < 3000) return fail("не хватило времени");
+    let sound;
     try {
-      return await toOgg(await ask(model, text, left));
+      sound = await ask(model, text, left);
     } catch (e) {
-      console.error("tts:", e.message.split("\n")[0].slice(0, 200));
+      fail(e.name === "TimeoutError" ? `${model} → таймаут` : e.message.split("\n")[0].slice(0, 300));
       if (e.fatal) break;
+      continue;
+    }
+    try {
+      return await toOgg(sound);
+    } catch (e) {
+      // Перекодирование не зависит от модели — пробовать дальше незачем
+      return fail(e.message.slice(0, 300));
     }
   }
   return null;
