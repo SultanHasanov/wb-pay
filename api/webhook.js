@@ -4,7 +4,7 @@
    Адрес этой функции нужно прописать в Green API как webhookUrl:
    https://<ваш-проект>.vercel.app/api/webhook */
 
-const { Bot, DB, U, Green } = require("./_bot.js");
+const { Bot, DB, U, Green, CFG } = require("./_bot.js");
 const AI = require("./_ai.js");
 const TTS = require("./_tts.js");
 
@@ -233,6 +233,18 @@ module.exports = async (req, res) => {
     const t = Date.now();
     const ogg = await TTS.speak("Проверка связи, раз, два, три.", VOICE_TTS_MS, log);
     return res.status(200).json({ ok: !!ogg, bytes: ogg ? ogg.length : 0, ms: Date.now() - t, log });
+  }
+
+  // Проверка загрузки файла в Green API без отправки в чат: ?diag=upload
+  if (req.method === "GET" && req.query && req.query.diag === "upload") {
+    try {
+      const ogg = await TTS.speak("Проверка.", VOICE_TTS_MS);
+      if (!ogg) return res.status(200).json({ ok: false, error: "озвучка не удалась" });
+      const out = await Green.uploadFile(ogg, "audio/ogg");
+      return res.status(200).json({ ok: true, host: Green.mediaHosts()[0], hosts: Green.mediaHosts(), out });
+    } catch (e) {
+      return res.status(200).json({ ok: false, error: e.message.replace(CFG.GREEN_TOKEN, "***") });
+    }
   }
 
   if (req.method !== "POST") {

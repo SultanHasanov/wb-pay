@@ -23,6 +23,46 @@ window.Green = (() => {
     return text ? JSON.parse(text) : null;
   }
 
+  /* Файлы Green API просит грузить на media-хост, но его адрес в
+     документации не описан, а угаданный 7107.media.greenapi.com не
+     существует. Поэтому пробуем по очереди: явный GREEN_MEDIA_URL,
+     угаданный media-хост, обычный API-хост. Рабочий запоминаем. */
+  let goodHost = null;
+  function mediaHosts() {
+    const api = CFG.GREEN_API_URL;
+    return [...new Set([
+      goodHost, CFG.GREEN_MEDIA_URL, api.replace(".api.", ".media."), api,
+    ].filter(Boolean))];
+  }
+
+  async function media(method, makeBody, headers) {
+    if (!CFG.greenReady()) {
+      throw new Error("GREEN_ID / GREEN_TOKEN не заполнены в assets/config.js");
+    }
+    const errors = [];
+    for (const host of mediaHosts()) {
+      let res;
+      try {
+        res = await fetch(`${host}/waInstance${CFG.GREEN_ID}/${method}/${CFG.GREEN_TOKEN}`, {
+          method: "POST", headers, body: makeBody(), signal: AbortSignal.timeout(15000),
+        });
+      } catch (e) {
+        // Хост не резолвится или не отвечает — пробуем следующий
+        errors.push(`${host}: ${(e.cause && e.cause.code) || e.message}`);
+        continue;
+      }
+      const text = await res.text();
+      if (res.status === 404) {
+        errors.push(`${host}: 404`);
+        continue;
+      }
+      if (!res.ok) throw new Error(`Green API ${method} @ ${host} → ${res.status} ${text}`.trim());
+      goodHost = host;
+      return text ? JSON.parse(text) : null;
+    }
+    throw new Error(`Green API ${method}: ни один хост не ответил (${errors.join("; ")})`);
+  }
+
   return {
     /* options: массив строк. WhatsApp требует 2–12 уникальных вариантов,
        вопрос до 255 символов, каждый вариант до 100. */
@@ -75,28 +115,27 @@ window.Green = (() => {
       return req("getChatHistory", { verb: "POST", body: { chatId, count } });
     },
 
-    /* Отправка файла. Green API просит грузить файлы на media-хост
-       инстанса (7107.api… → 7107.media…). Тип сообщения он выбирает по
-       расширению: .ogg с opus уходит голосовым. Только для сервера —
-       в браузере файлы не шлём. */
-    async sendFileByUpload(chatId, data, fileName, quotedMessageId) {
-      if (!CFG.greenReady()) {
-        throw new Error("GREEN_ID / GREEN_TOKEN не заполнены в assets/config.js");
-      }
-      const media = CFG.GREEN_MEDIA_URL || CFG.GREEN_API_URL.replace(".api.", ".media.");
-      const form = new FormData();
-      form.append("chatId", chatId);
-      form.append("file", new Blob([data]), fileName);
-      form.append("fileName", fileName);
-      if (quotedMessageId) form.append("quotedMessageId", quotedMessageId);
-      const res = await fetch(
-        `${media}/waInstance${CFG.GREEN_ID}/sendFileByUpload/${CFG.GREEN_TOKEN}`,
-        { method: "POST", body: form },
-      );
-      const text = await res.text();
-      if (!res.ok) throw new Error(`Green API sendFileByUpload → ${res.status} ${text}`.trim());
-      return text ? JSON.parse(text) : null;
+    /* Отправка файла. Тип сообщения Green API выбирает по расширению:
+       .ogg с opus уходит голосовым. Только для сервера — в браузере
+       файлы не шлём. */
+    sendFileByUpload(chatId, data, fileName, quotedMessageId) {
+      return media("sendFileByUpload", () => {
+        const form = new FormData();
+        form.append("chatId", chatId);
+        form.append("file", new Blob([data]), fileName);
+        form.append("fileName", fileName);
+        if (quotedMessageId) form.append("quotedMessageId", quotedMessageId);
+        return form;
+      });
     },
+
+    /* Загрузить файл без отправки: { urlFile }. Нужен для проверки,
+       какой media-хост отвечает. */
+    uploadFile(data, mime) {
+      return media("uploadFile", () => data, { "Content-Type": mime });
+    },
+
+    mediaHosts,
 
     /* Ссылка на файл медиа-сообщения: { downloadUrl }. Нужна для цитат —
        у процитированного голосового своей ссылки в вебхуке нет. */
