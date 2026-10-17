@@ -26,8 +26,13 @@ const CALL_RE = /^\s*(бот|bot)(?=[\s,:!?.]|$)[\s,:!?.]*/i;
 /* «скажи голосом», «ответь голосовым» — ответить голосовым сообщением.
    Слово «голосовое» сюда не входит: «расшифруй голосовое» — просьба
    послушать, а не ответить голосом. */
-const VOICE_TAG = /\[\s*голос\s*\]\s*/giu;
-const VOICE_RE =/(?:(?:скажи|ответь|расскажи|отправь|запиши|скинь)\s+)?голос(?:ом|овым)(?=[\s,:!?.]|$)[\s,:!?.]*/iu;
+const VOICE_RE = /(?:(?:скажи|ответь|расскажи|отправь|запиши|скинь)\s+)?(?:(женск|мужск)\S*\s+)?голос(?:ом|овым)(?=[\s,:!?.]|$)[\s,:!?.]*/iu;
+
+// Метка, которой модель просит озвучить ответ: [голос], [голос:ж], [голос:м]
+const VOICE_TAG = /\[\s*голос\s*(?::\s*([жм]))?\s*\]/iu;
+
+// «женским голосом» → "f", «мужским» → "m", иначе null — случайный голос
+const genderOf = (s) => (/^ж/i.test(s || "") ? "f" : /^м/i.test(s || "") ? "m" : null);
 
 // Как сообщение выглядит для модели: у медиа содержимого нет, только метка
 const MEDIA = {
@@ -105,7 +110,9 @@ async function maybeChat(body, ctx) {
   const forOther = (called || mentioned) && !!q.stanzaId && !replied;
 
   text = text.replace(CALL_RE, "").replace(`@${botNum}`, "").trim();
-  const wantVoice = VOICE_RE.test(text);
+  const voiceAsk = text.match(VOICE_RE);
+  const wantVoice = !!voiceAsk;
+  let gender = voiceAsk ? genderOf(voiceAsk[1]) : null;
   if (wantVoice) text = text.replace(VOICE_RE, " ").replace(/\s+/g, " ").trim();
   // «скажи голосом» ответом на сообщение бота — озвучить это сообщение
   const readAloud = wantVoice && replied && !text;
@@ -164,7 +171,7 @@ async function maybeChat(body, ctx) {
 
   // Озвучиваем текст, а не метку вроде «[голосовое]»
   if (readAloud && quoted && !Object.values(MEDIA).includes(quoted.text)) {
-    return sendVoice(chatId, quoted.text, md.idMessage);
+    return sendVoice(chatId, quoted.text, md.idMessage, gender);
   }
 
   let answer = await AI.reply(text, {
@@ -182,21 +189,23 @@ async function maybeChat(body, ctx) {
   });
   if (!answer) return;
   // Метку [голос] модель ставит, когда её просят ответить голосом
-  const voiceReply = wantVoice || /\[\s*голос\s*\]/iu.test(answer);
+  const tag = answer.match(VOICE_TAG);
+  const voiceReply = wantVoice || !!tag;
+  if (tag && !gender) gender = genderOf(tag[1]);
   // Модель пишет «[голос]: текст» — двоеточие уходит вместе с меткой
-  answer = answer.replace(VOICE_TAG, "").replace(/^[\s:–—-]+/, "").trim();
+  answer = answer.replace(new RegExp(VOICE_TAG.source, "giu"), "").replace(/^[\s:–—-]+/, "").trim();
   if (!answer) return;
   // Отвечаем цитатой на то сообщение, на которое просили ответить.
   // Без @-упоминания автора: цитаты достаточно, номер в тексте — лишний.
   const quoteId = forOther ? q.stanzaId : md.idMessage;
 
-  if (voiceReply) return sendVoice(chatId, answer, quoteId);
+  if (voiceReply) return sendVoice(chatId, answer, quoteId, gender);
   await Green.sendMessage(chatId, answer, quoteId);
 }
 
 // Голосом не вышло (квота, таймаут, ffmpeg) — тот же текст обычным сообщением
-async function sendVoice(chatId, text, quoteId) {
-  const ogg = await TTS.speak(text, VOICE_TTS_MS).catch((e) => {
+async function sendVoice(chatId, text, quoteId, gender) {
+  const ogg = await TTS.speak(text, VOICE_TTS_MS, [], gender).catch((e) => {
     console.error("tts:", e.message);
     return null;
   });
@@ -231,7 +240,7 @@ module.exports = async (req, res) => {
   if (req.method === "GET" && req.query && req.query.diag === "voice") {
     const log = [];
     const t = Date.now();
-    const ogg = await TTS.speak("Проверка связи, раз, два, три.", VOICE_TTS_MS, log);
+    const ogg = await TTS.speak("Проверка связи, раз, два, три.", VOICE_TTS_MS, log, req.query.g || null);
     return res.status(200).json({ ok: !!ogg, bytes: ogg ? ogg.length : 0, ms: Date.now() - t, log });
   }
 

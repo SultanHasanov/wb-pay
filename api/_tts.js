@@ -19,11 +19,17 @@ const MODELS = (process.env.GEMINI_TTS_MODEL ||
   "gemini-3.8-flash-tts,gemini-3.8-flash-lite-tts,gemini-3.1-flash-tts-preview")
   .split(",").map((s) => s.trim()).filter(Boolean);
 
-// Голос из готовых у Gemini; спокойный мужской
-const VOICE = process.env.GEMINI_TTS_VOICE || "Charon";
+// Готовые голоса Gemini. Пол не просили — выбираем случайно, чтобы
+// бот не звучал всегда одинаково. Списки можно задать в Vercel через запятую.
+const list = (env, def) => (process.env[env] || def).split(",").map((s) => s.trim()).filter(Boolean);
+const VOICES = {
+  f: list("GEMINI_TTS_FEMALE", "Kore,Aoede,Leda"),
+  m: list("GEMINI_TTS_MALE", "Charon,Puck,Fenrir"),
+};
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const STYLE = "спокойно, дружелюбно, разговорно, как в голосовом сообщении другу";
 
-async function ask(model, text, ms) {
+async function ask(model, text, voice, ms) {
   const res = await fetch(API, {
     method: "POST",
     headers: {
@@ -41,7 +47,7 @@ async function ask(model, text, ms) {
         }],
       }],
       response_format: { type: "audio" },
-      generation_config: { speech_config: [{ voice: VOICE }] },
+      generation_config: { speech_config: [{ voice }] },
     }),
     signal: AbortSignal.timeout(ms),
   });
@@ -86,10 +92,10 @@ function toOgg(sound) {
   });
 }
 
-/* Озвучить text за budgetMs. Возвращает ogg/opus или null —
-   тогда вызывающий отправит ответ текстом. В log складываются
-   причины неудач — для диагностики. */
-async function speak(text, budgetMs = 20000, log = []) {
+/* Озвучить text за budgetMs. gender — "f" (женский), "m" (мужской)
+   или null — случайный. Возвращает ogg/opus или null — тогда вызывающий
+   отправит ответ текстом. В log складываются причины неудач. */
+async function speak(text, budgetMs = 20000, log = [], gender = null) {
   const fail = (msg) => {
     log.push(msg);
     console.error("tts:", msg);
@@ -98,13 +104,15 @@ async function speak(text, budgetMs = 20000, log = []) {
   if (!process.env.GEMINI_API_KEY) return fail("нет GEMINI_API_KEY");
   if (!ffmpeg) return fail("нет ffmpeg-static");
   if (!text) return null;
+  // Один голос на всё сообщение, даже если первая модель не ответила
+  const voice = pick(VOICES[gender] || VOICES[pick(["f", "m"])]);
   const deadline = Date.now() + budgetMs;
   for (const model of MODELS) {
     const left = deadline - Date.now() - 2000;
     if (left < 3000) return fail("не хватило времени");
     let sound;
     try {
-      sound = await ask(model, text, left);
+      sound = await ask(model, text, voice, left);
     } catch (e) {
       fail(e.name === "TimeoutError" ? `${model} → таймаут` : e.message.split("\n")[0].slice(0, 300));
       if (e.fatal) break;
