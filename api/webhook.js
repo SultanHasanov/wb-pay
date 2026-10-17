@@ -26,7 +26,8 @@ const CALL_RE = /^\s*(бот|bot)(?=[\s,:!?.]|$)[\s,:!?.]*/i;
 /* «скажи голосом», «ответь голосовым» — ответить голосовым сообщением.
    Слово «голосовое» сюда не входит: «расшифруй голосовое» — просьба
    послушать, а не ответить голосом. */
-const VOICE_RE = /(?:(?:скажи|ответь|расскажи|отправь|запиши|скинь)\s+)?голос(?:ом|овым)(?=[\s,:!?.]|$)[\s,:!?.]*/iu;
+const VOICE_TAG = /\[\s*голос\s*\]\s*/giu;
+const VOICE_RE =/(?:(?:скажи|ответь|расскажи|отправь|запиши|скинь)\s+)?голос(?:ом|овым)(?=[\s,:!?.]|$)[\s,:!?.]*/iu;
 
 // Как сообщение выглядит для модели: у медиа содержимого нет, только метка
 const MEDIA = {
@@ -159,11 +160,12 @@ async function maybeChat(body, ctx) {
   // Звук не скачался — молчим: без него ответить на голосовое нечем
   if (isVoice && !audio) return;
 
-  const answer = await AI.reply(text, {
+  let answer = await AI.reply(text, {
     audio,
     voice: wantVoice,
-    // Голосом: модели меньше времени, остальное — на озвучку и отправку
-    budgetMs: wantVoice ? VOICE_TEXT_MS : undefined,
+    // Просьба ответить голосом может быть и внутри голосового — тогда
+    // её распознаёт модель. Время на озвучку оставляем в обоих случаях.
+    budgetMs: wantVoice || audio ? VOICE_TEXT_MS : undefined,
     author: (body.senderData && body.senderData.senderName) || "",
     managers,
     facts,
@@ -172,12 +174,16 @@ async function maybeChat(body, ctx) {
     history,
   });
   if (!answer) return;
+  // Метку [голос] модель ставит, когда её просят ответить голосом
+  const voiceReply = wantVoice || /\[\s*голос\s*\]/iu.test(answer);
+  answer = answer.replace(VOICE_TAG, "").trim();
+  if (!answer) return;
   // Отвечаем цитатой на то сообщение, на которое просили ответить.
   // Без @-упоминания автора: цитаты достаточно, номер в тексте — лишний.
   const quoteId = forOther ? q.stanzaId : md.idMessage;
 
   // Голосом не вышло (квота, таймаут, ffmpeg) — тот же ответ текстом
-  if (wantVoice) {
+  if (voiceReply) {
     const ogg = await TTS.speak(answer, VOICE_TTS_MS).catch((e) => {
       console.error("tts:", e.message);
       return null;
