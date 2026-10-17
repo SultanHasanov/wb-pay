@@ -75,6 +75,12 @@ window.Green = (() => {
       return req("getChatHistory", { verb: "POST", body: { chatId, count } });
     },
 
+    /* Ссылка на файл медиа-сообщения: { downloadUrl }. Нужна для цитат —
+       у процитированного голосового своей ссылки в вебхуке нет. */
+    downloadFile(chatId, idMessage) {
+      return req("downloadFile", { verb: "POST", body: { chatId, idMessage } });
+    },
+
     getStateInstance: () => req("getStateInstance"),
     getSettings: () => req("getSettings"),
     setSettings: (obj) => req("setSettings", { verb: "POST", body: obj }),

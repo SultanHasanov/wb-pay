@@ -12,6 +12,8 @@ const AI = require("./_ai.js");
    обращаются: сообщение начинается с «бот»/«bot», в нём упомянут номер
    бота или это reply на его сообщение. На одни смайлики не отвечает.
    Если бота отметили в ответе на чужое сообщение — отвечает на то сообщение.
+   Голосовые слушает: если голосовое пришло ответом на его сообщение или
+   его позвали в ответ на чужое голосовое («бот, что он сказал?»).
    Свои сообщения бота приходят другим typeWebhook, так что петли нет. */
 const CALL_RE = /^\s*(бот|bot)(?=[\s,:!?.]|$)[\s,:!?.]*/i;
 
@@ -43,11 +45,35 @@ function chatText(md) {
   return (md.extendedTextMessageData || {}).text || "";
 }
 
+// Голосовые WhatsApp — ogg/opus по 10–30 КБ на минуту; больше 5 МБ не тянем
+const AUDIO_MAX = 5 * 1024 * 1024;
+const AUDIO_MS = 6000;
+
+/* Скачать голосовое и отдать в виде, который понимает Gemini.
+   Ссылку берём из самого сообщения, а у цитаты её нет — тогда
+   спрашиваем Green API. Не вышло — null, бот ответит без звука. */
+async function loadAudio(chatId, idMessage, url, mime) {
+  try {
+    if (!url) url = ((await Green.downloadFile(chatId, idMessage)) || {}).downloadUrl;
+    if (!url) return null;
+    const res = await fetch(url, { signal: AbortSignal.timeout(AUDIO_MS) });
+    if (!res.ok) throw new Error(`скачивание → ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length || buf.length > AUDIO_MAX) return null;
+    const type = (mime || res.headers.get("content-type") || "audio/ogg").split(";")[0];
+    return { mime: type, data: buf.toString("base64") };
+  } catch (e) {
+    console.error("audio:", e.message);
+    return null;
+  }
+}
+
 async function maybeChat(body, ctx) {
   if (!process.env.GEMINI_API_KEY) return;
   if (!body || body.typeWebhook !== "incomingMessageReceived") return;
   const md = body.messageData || {};
-  if (!["textMessage", "extendedTextMessage", "quotedMessage"].includes(md.typeMessage)) return;
+  const isVoice = md.typeMessage === "audioMessage";
+  if (!isVoice && !["textMessage", "extendedTextMessage", "quotedMessage"].includes(md.typeMessage)) return;
 
   const chatId = body.senderData && body.senderData.chatId;
   if (!chatId || !chatId.endsWith("@g.us")) return;
@@ -68,8 +94,9 @@ async function maybeChat(body, ctx) {
 
   text = text.replace(CALL_RE, "").replace(`@${botNum}`, "").trim();
   if (!text && called && !forOther) text = "привет";
-  // Ответ смайликами на сообщение бота — это реакция, а не вопрос
-  if (!forOther && !/[\p{L}\p{N}]/u.test(text)) return;
+  // Ответ смайликами на сообщение бота — это реакция, а не вопрос.
+  // У голосового текста нет вовсе — его смысл в звуке.
+  if (!forOther && !isVoice && !/[\p{L}\p{N}]/u.test(text)) return;
 
   // Смены и имена менеджеров — только для рабочей группы, в чужие не выносим
   let managers = [];
@@ -106,7 +133,20 @@ async function maybeChat(body, ctx) {
     author: src ? msgAuthor(src) : "",
   } : null;
 
+  // Голосовое ответом боту — слушаем его; «бот» в ответ на чужое
+  // голосовое — слушаем то, что процитировали
+  let audio = null;
+  if (isVoice) {
+    const f = md.fileMessageData || {};
+    audio = await loadAudio(chatId, md.idMessage, f.downloadUrl, f.mimeType);
+  } else if (forOther && q.typeMessage === "audioMessage") {
+    audio = await loadAudio(chatId, q.stanzaId, src && src.downloadUrl, src && src.mimeType);
+  }
+  // Звук не скачался — молчим: без него ответить на голосовое нечем
+  if (isVoice && !audio) return;
+
   const answer = await AI.reply(text, {
+    audio,
     author: (body.senderData && body.senderData.senderName) || "",
     managers,
     facts,

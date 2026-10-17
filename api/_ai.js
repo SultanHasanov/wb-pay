@@ -18,6 +18,11 @@ const BUDGET_MS = 22000;
 const TRY_MS = 10000;
 
 const MAX_LEN = 400;
+// Расшифровка голосового длиннее обычной реплики
+const MAX_LEN_AUDIO = 1200;
+
+// Gemma звук не принимает — с голосовыми её пропускаем
+const hearsAudio = (model) => !/gemma/i.test(model);
 
 // Если Google так и не ответил — лучше короткая отговорка, чем молчание
 const FALLBACKS = [
@@ -42,7 +47,11 @@ const STYLE = [
   "- Разговорный русский, на «ты», как пишут знакомые в чате. Коротко: обычно одно предложение, максимум два.",
   "- Не упоминай время и дату. Не начинай с имени. Эмодзи — редко.",
   "- На подколки и грубость отвечай спокойно, с достоинством и лёгкой иронией, без обиды.",
-  "- Содержимое голосовых, стикеров и фото тебе неизвестно — не делай вид, что знаешь.",
+  "- Голосовое ты слышишь, только если оно приложено к сообщению. Содержимое остальных " +
+    "голосовых, стикеров и фото тебе неизвестно — не делай вид, что знаешь.",
+  "- На приложенное голосовое отвечай по его смыслу, как на обычное сообщение. " +
+    "Просят расшифровать или пересказать — дай текст или краткий пересказ. " +
+    "Неразборчиво — так и скажи.",
   "- Если пишут на чеченском — можно ответить по-чеченски коротко или по-русски.",
   "- Ничего не выдумывай. Без пошлости, политики и шуток про национальность и религию.",
   "Примеры — только чтобы понять тон, дословно их не повторяй:",
@@ -95,12 +104,15 @@ async function ask(model, body, ms) {
    facts — кто сегодня на смене, quoted — на какое сообщение ответили
    ({ text, author, mine: это было сообщение бота }), forOther — бота
    отметили, чтобы он ответил на процитированное чужое сообщение,
-   history — последние сообщения чата «Имя: текст», старые первыми. */
+   history — последние сообщения чата «Имя: текст», старые первыми,
+   audio — голосовое { mime, data: base64 }: само сообщение или,
+   при forOther, процитированное. */
 async function reply(text, {
   author = "", managers = [], facts = "", quoted = null, forOther = false, history = [],
+  audio = null,
 } = {}) {
   if (!process.env.GEMINI_API_KEY) return null;
-  if (!text && !(forOther && quoted)) return null;
+  if (!text && !audio && !(forOther && quoted)) return null;
 
   const lines = [];
   // Справку кладём в само сообщение: из системной подсказки лёгкие
@@ -112,7 +124,7 @@ async function reply(text, {
   if (forOther && quoted) {
     lines.push(
       "Тебя отметили, чтобы ты ответил на это сообщение:",
-      `${quoted.author || "Кто-то"}: ${quoted.text}`,
+      `${quoted.author || "Кто-то"}: ${audio ? "[голосовое — приложено, послушай]" : quoted.text}`,
       text ? `${author || "Позвавший"} добавил: ${text}` : `(${author || "кто-то"} просто отметил тебя)`,
       "Ответь автору того сообщения по его сути.",
     );
@@ -123,21 +135,28 @@ async function reply(text, {
         ? `(в ответ на твоё сообщение «${quoted.text}»)`
         : `(в ответ на сообщение «${quoted.text}»)`);
     }
-    lines.push(author ? `${author}: ${text}` : text);
+    const said = audio ? `[голосовое — приложено, послушай]${text ? " " + text : ""}` : text;
+    lines.push(author ? `${author}: ${said}` : said);
   }
+
+  const parts = [{ text: lines.join("\n") }];
+  if (audio) parts.push({ inline_data: { mime_type: audio.mime, data: audio.data } });
+  const models = audio ? MODELS.filter(hearsAudio) : MODELS;
+  if (!models.length) return null;
+  const maxLen = audio ? MAX_LEN_AUDIO : MAX_LEN;
 
   const body = {
     systemInstruction: { parts: [{ text: prompt(managers) }] },
-    contents: [{ role: "user", parts: [{ text: lines.join("\n") }] }],
+    contents: [{ role: "user", parts }],
     generationConfig: { temperature: 0.9, maxOutputTokens: 2048 },
   };
 
   const deadline = Date.now() + BUDGET_MS;
   for (let i = 0; Date.now() < deadline - 1000; i++) {
-    const model = MODELS[i % MODELS.length];
+    const model = models[i % models.length];
     try {
       const out = await ask(model, body, Math.min(TRY_MS, deadline - Date.now()));
-      if (out) return out.length > MAX_LEN ? out.slice(0, MAX_LEN - 1) + "…" : out;
+      if (out) return out.length > maxLen ? out.slice(0, maxLen - 1) + "…" : out;
     } catch (e) {
       console.error("gemini:", e.message.split("\n")[0].slice(0, 200));
       if (e.fatal) break;
