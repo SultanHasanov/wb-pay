@@ -361,16 +361,13 @@ async function maybePrivate(body, ctx) {
   const orderOp = op === "take" || op === "cancel" || op === "partial";
 
   if (orderOp) {
-    // Пришёл новый QR — пересылаем заявку и подтверждаем
+    // Пришёл новый, ещё не пересланный QR — пересылаем заявку и подтверждаем
     if (freshQr) {
       if (group) await forwardOrder(group, { op, summary, author, chatId, qrUrl });
       return answerUser(chatId, `${FWD_MARK} Передал сотрудникам пункта. Ожидайте, с вами свяжутся.`, wantVoice);
     }
-    // QR уже присылали и заявку передали — не дублируем, просто успокаиваем
-    if (lastFwdTs > 0) {
-      return answerUser(chatId, "Ваша заявка уже у сотрудников пункта. Ожидайте — с вами свяжутся.", wantVoice);
-    }
-    // QR ещё нет — просим прислать фото кода
+    // QR ещё нет — просим прислать фото кода (статус уже принятой заявки
+    // модель распознаёт по истории и отвечает через op=none)
     return answerUser(chatId,
       reply || "Пришлите, пожалуйста, фото QR-кода заказа — и я передам заявку сотрудникам.", wantVoice);
   }
