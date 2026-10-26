@@ -232,6 +232,10 @@ async function sendVoice(chatId, text, quoteId, gender) {
 // в истории узнаём, что QR уже переслан, и не дублируем пересылку.
 const FWD_MARK = "✅ Заявку принял";
 
+// Фото из истории считаем QR текущей заявки, только если оно свежее.
+// Старые картинки (прошлые заявки/тесты) за QR не принимаем.
+const QR_MAX_AGE = 30 * 60;
+
 const OP_RU = {
   take: "Взять / отложить (не отдавать в автоотмену)",
   cancel: "Отмена заказа",
@@ -324,10 +328,18 @@ async function maybePrivate(body, ctx) {
     .map(historyLine)
     .filter(Boolean);
 
-  // Если фото сейчас нет — берём последний QR из истории
-  let qrTs = nowTs;
+  // Когда в последний раз мы уже переслали заявку (по метке в истории).
+  // Всё, что отправлено до этого момента, считаем уже обработанным.
+  const lastFwdTs = raw
+    .filter((m) => m.type === "outgoing" && String(msgText(m)).includes(FWD_MARK)
+      && (Number(m.timestamp) || 0) >= nowTs - QR_MAX_AGE)
+    .reduce((mx, m) => Math.max(mx, Number(m.timestamp) || 0), 0);
+
+  // QR текущей заявки: фото сейчас или свежее фото из истории. Старое не берём.
+  let qrTs = isImage ? nowTs : 0;
   if (!qrUrl) {
-    const qrMsg = raw.find((m) => m.typeMessage === "imageMessage");
+    const qrMsg = raw.find((m) => m.typeMessage === "imageMessage"
+      && (Number(m.timestamp) || 0) >= nowTs - QR_MAX_AGE);
     if (qrMsg) {
       qrTs = Number(qrMsg.timestamp) || 0;
       qrUrl = qrMsg.downloadUrl
@@ -335,9 +347,11 @@ async function maybePrivate(body, ctx) {
         || null;
     }
   }
+  // Новый, ещё не пересланный QR — только такой пересылаем в группу
+  const freshQr = !!qrUrl && qrTs > lastFwdTs;
 
   const author = (body.senderData && body.senderData.senderName) || "";
-  const decision = await Assistant.handle({ text, audio, history, qrAttached: !!qrUrl, author });
+  const decision = await Assistant.handle({ text, audio, history, qrAttached: freshQr, author });
   if (!decision) return;
 
   const wantVoice = isVoice || decision.voice;
@@ -346,12 +360,19 @@ async function maybePrivate(body, ctx) {
   const summary = (decision.summary || text || "").trim();
   const orderOp = op === "take" || op === "cancel" || op === "partial";
 
-  // Операция с товаром и QR на руках — пересылаем в группу (если ещё не пересылали)
-  if (orderOp && qrUrl) {
-    const already = raw.some((m) =>
-      m.type === "outgoing" && Number(m.timestamp) > qrTs && String(msgText(m)).includes(FWD_MARK));
-    if (!already && group) await forwardOrder(group, { op, summary, author, chatId, qrUrl });
-    return answerUser(chatId, `${FWD_MARK} Передал сотрудникам пункта. Ожидайте, с вами свяжутся.`, wantVoice);
+  if (orderOp) {
+    // Пришёл новый QR — пересылаем заявку и подтверждаем
+    if (freshQr) {
+      if (group) await forwardOrder(group, { op, summary, author, chatId, qrUrl });
+      return answerUser(chatId, `${FWD_MARK} Передал сотрудникам пункта. Ожидайте, с вами свяжутся.`, wantVoice);
+    }
+    // QR уже присылали и заявку передали — не дублируем, просто успокаиваем
+    if (lastFwdTs > 0) {
+      return answerUser(chatId, "Ваша заявка уже у сотрудников пункта. Ожидайте — с вами свяжутся.", wantVoice);
+    }
+    // QR ещё нет — просим прислать фото кода
+    return answerUser(chatId,
+      reply || "Пришлите, пожалуйста, фото QR-кода заказа — и я передам заявку сотрудникам.", wantVoice);
   }
 
   if (op === "human") {
@@ -359,8 +380,7 @@ async function maybePrivate(body, ctx) {
     return answerUser(chatId, reply || "Секунду, подключаю сотрудника — он скоро ответит.", wantVoice);
   }
 
-  // take/cancel/partial без QR → просьба прислать код; delivery → про wbdav.ru;
-  // none → короткий отклик. Текст во всех случаях уже сформулировала модель.
+  // delivery → про wbdav.ru; none → короткий отклик. Текст сформулировала модель.
   return answerUser(chatId, reply, wantVoice);
 }
 
