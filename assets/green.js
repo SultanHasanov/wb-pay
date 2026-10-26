@@ -85,6 +85,16 @@ window.Green = (() => {
       return req("sendMessage", { verb: "POST", body });
     },
 
+    /* Переслать файл по его ссылке (напр. входящий QR клиента в группу).
+       Скачивать и перезаливать не нужно — Green API возьмёт файл сам.
+       Это обычный JSON-метод на API-хосте, не на media. */
+    sendFileByUrl(chatId, urlFile, fileName, caption, quotedMessageId) {
+      const body = { chatId, urlFile, fileName };
+      if (caption) body.caption = caption;
+      if (quotedMessageId) body.quotedMessageId = quotedMessageId;
+      return req("sendFileByUrl", { verb: "POST", body });
+    },
+
     /* Удаление у всех участников работает 72 часа после отправки,
        дальше сообщение исчезает только у самого отправителя. */
     deleteMessage(chatId, idMessage, onlySenderDelete = false) {

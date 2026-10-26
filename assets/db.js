@@ -55,6 +55,7 @@ window.DEFAULT_SETTINGS = {
   pollTime: "09:00",
   tz: "Europe/Moscow",
   groupId: "",
+  ordersGroupId: "",       // куда личка-помощник шлёт заявки по заказам; пусто → groupId
   skipWeekends: false,
   question: "Кто сегодня на смене?",
   confirmMode: "confirm",   // confirm | hold | instant

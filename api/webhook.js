@@ -7,6 +7,7 @@
 const { Bot, DB, U, Green, CFG } = require("./_bot.js");
 const AI = require("./_ai.js");
 const TTS = require("./_tts.js");
+const Assistant = require("./_assistant.js");
 
 // Ответ голосом укладываем в 60 с функции (vercel.json):
 // текст до 15 с, озвучка с перекодированием до 20 с, остальное — отправка
@@ -219,6 +220,150 @@ async function sendVoice(chatId, text, quoteId, gender) {
   return Green.sendMessage(chatId, text, quoteId);
 }
 
+/* --- Помощник в личке по заказам Wildberries --------------------------
+   Клиент пишет боту напрямую (@c.us): просит взять/отложить заказ,
+   отменить целиком или частично, оформить доставку или позвать оператора.
+   Состояние диалога не храним отдельно — восстанавливаем по истории чата.
+   Для операций с товаром нужен QR-код (фото): если его нет — просим,
+   когда приходит — пересылаем сводку и картинку в рабочую группу.
+   Голосом отвечаем только если клиент сам прислал голосовое или попросил. */
+
+// Фиксированное подтверждение клиенту при пересылке заявки. По этой метке
+// в истории узнаём, что QR уже переслан, и не дублируем пересылку.
+const FWD_MARK = "✅ Заявку принял";
+
+const OP_RU = {
+  take: "Взять / отложить (не отдавать в автоотмену)",
+  cancel: "Отмена заказа",
+  partial: "Частичная отмена (часть отменить, часть забрать)",
+};
+
+// Отправить клиенту ответ: голосом, если он сам голосом/попросил, иначе текстом
+function answerUser(chatId, text, voice) {
+  if (!text) return;
+  if (voice) return sendVoice(chatId, text, undefined, null);
+  return Green.sendMessage(chatId, text);
+}
+
+// Переслать заявку и QR в рабочую группу
+async function forwardOrder(group, { op, summary, author, chatId, qrUrl }) {
+  const phone = chatId.replace("@c.us", "");
+  const head = [
+    "🧾 Заявка по заказу",
+    `Операция: ${OP_RU[op] || op}`,
+    summary ? `Просьба: ${summary}` : null,
+    `Клиент: ${author || "без имени"} (+${phone})`,
+    `Чат: https://wa.me/${phone}`,
+  ].filter(Boolean).join("\n");
+  await Green.sendMessage(group, head).catch((e) => console.error("fwd text:", e.message));
+  if (qrUrl) {
+    await Green.sendFileByUrl(group, qrUrl, "qr.jpg", "QR-код заказа")
+      .catch((e) => console.error("fwd qr:", e.message));
+  }
+}
+
+// Позвать оператора в группу (бот не справился или клиент просит человека)
+async function notifyHuman(group, { summary, author, chatId }) {
+  const phone = chatId.replace("@c.us", "");
+  const msg = [
+    "🙋 Нужен оператор — бот не справился или клиент просит человека.",
+    summary ? `Вопрос: ${summary}` : null,
+    `Клиент: ${author || "без имени"} (+${phone})`,
+    `Чат: https://wa.me/${phone}`,
+  ].filter(Boolean).join("\n");
+  await Green.sendMessage(group, msg).catch((e) => console.error("human:", e.message));
+}
+
+async function maybePrivate(body, ctx) {
+  if (!process.env.GEMINI_API_KEY) return;
+  if (!body || body.typeWebhook !== "incomingMessageReceived") return;
+  const md = body.messageData || {};
+  const t = md.typeMessage;
+  const isVoice = t === "audioMessage";
+  const isImage = t === "imageMessage";
+  const isText = ["textMessage", "extendedTextMessage", "quotedMessage"].includes(t);
+  if (!isVoice && !isImage && !isText) return;
+
+  // Только личные чаты. Группы обрабатывает maybeChat / processNotification.
+  const chatId = body.senderData && body.senderData.chatId;
+  if (!chatId || !chatId.endsWith("@c.us")) return;
+
+  const group = ctx.settings.ordersGroupId || process.env.ORDERS_GROUP_ID || ctx.settings.groupId;
+  const nowTs = Number(body.timestamp) || Math.floor(Date.now() / 1000);
+
+  // Что написал клиент сейчас + QR, если это фото (в т.ч. с подписью)
+  let text = chatText(md);
+  let qrUrl = null;
+  if (isImage) {
+    const f = md.fileMessageData || {};
+    qrUrl = f.downloadUrl || null;
+    if (!qrUrl) qrUrl = ((await Green.downloadFile(chatId, md.idMessage).catch(() => null)) || {}).downloadUrl || null;
+    if (f.caption) text = text ? `${text} ${f.caption}` : f.caption;
+  }
+
+  // Голосовое слушаем; не скачалось — просим написать или прислать ещё раз
+  let audio = null;
+  if (isVoice) {
+    const f = md.fileMessageData || {};
+    audio = await loadAudio(chatId, md.idMessage, f.downloadUrl, f.mimeType);
+    if (!audio) {
+      return Green.sendMessage(chatId,
+        "Не получилось прослушать голосовое. Напишите, пожалуйста, что нужно по заказу, или пришлите ещё раз.");
+    }
+  }
+
+  // История чата: контекст для модели и поиск ранее присланного QR
+  const raw = await Green.getChatHistory(chatId, 15).catch((e) => {
+    console.error("history:", e.message);
+    return [];
+  }) || [];
+  const history = raw
+    .filter((m) => m.idMessage !== md.idMessage)
+    .slice(0, 12)
+    .reverse()
+    .map(historyLine)
+    .filter(Boolean);
+
+  // Если фото сейчас нет — берём последний QR из истории
+  let qrTs = nowTs;
+  if (!qrUrl) {
+    const qrMsg = raw.find((m) => m.typeMessage === "imageMessage");
+    if (qrMsg) {
+      qrTs = Number(qrMsg.timestamp) || 0;
+      qrUrl = qrMsg.downloadUrl
+        || ((await Green.downloadFile(chatId, qrMsg.idMessage).catch(() => null)) || {}).downloadUrl
+        || null;
+    }
+  }
+
+  const author = (body.senderData && body.senderData.senderName) || "";
+  const decision = await Assistant.handle({ text, audio, history, qrAttached: !!qrUrl, author });
+  if (!decision) return;
+
+  const wantVoice = isVoice || decision.voice;
+  const op = decision.op || "none";
+  const reply = (decision.reply || "").trim();
+  const summary = (decision.summary || text || "").trim();
+  const orderOp = op === "take" || op === "cancel" || op === "partial";
+
+  // Операция с товаром и QR на руках — пересылаем в группу (если ещё не пересылали)
+  if (orderOp && qrUrl) {
+    const already = raw.some((m) =>
+      m.type === "outgoing" && Number(m.timestamp) > qrTs && String(msgText(m)).includes(FWD_MARK));
+    if (!already && group) await forwardOrder(group, { op, summary, author, chatId, qrUrl });
+    return answerUser(chatId, `${FWD_MARK} Передал сотрудникам пункта. Ожидайте, с вами свяжутся.`, wantVoice);
+  }
+
+  if (op === "human") {
+    if (group) await notifyHuman(group, { summary, author, chatId });
+    return answerUser(chatId, reply || "Секунду, подключаю сотрудника — он скоро ответит.", wantVoice);
+  }
+
+  // take/cancel/partial без QR → просьба прислать код; delivery → про wbdav.ru;
+  // none → короткий отклик. Текст во всех случаях уже сформулировала модель.
+  return answerUser(chatId, reply, wantVoice);
+}
+
 /* Дождаться отложенной уборки, если её срок вот-вот наступит.
    В serverless нет фонового таймера: функция завершится раньше, чем
    сработает setTimeout, поэтому короткое ожидание делаем прямо здесь. */
@@ -276,6 +421,7 @@ module.exports = async (req, res) => {
 
     // Сбой ИИ не должен давать 500: Green API повторил бы доставку зря
     await maybeChat(body, ctx).catch((e) => console.error("ai chat:", e.message));
+    await maybePrivate(body, ctx).catch((e) => console.error("ai private:", e.message));
 
     res.status(200).json({ ok: true });
   } catch (e) {
